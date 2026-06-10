@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#08080D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SHADOW FALL</title>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@400;500&family=Caveat:wght@500&display=swap" rel="stylesheet">
+
+<!-- Phaser.js -->
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+
+<style>
+/* ============================================================
+   SHADOW FALL — Base styles
+   ============================================================ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #08080D;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: 'Inter', sans-serif;
+}
+
+#game-container {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+#game-container canvas { display: block; }
+
+/* ============================================================
+   Touch controls
+   ============================================================ */
+#controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 18px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding-left: calc(18px + env(safe-area-inset-left));
+  padding-right: calc(18px + env(safe-area-inset-right));
+  pointer-events: none;       /* clusters re-enable */
+  z-index: 20;
+}
+.cluster {
+  display: flex;
+  gap: 14px;
+  pointer-events: auto;
+}
+.ctl {
+  /* 64px preferred, but never let the control row exceed ~15% of screen height */
+  width: clamp(48px, 11vh, 64px);
+  height: clamp(48px, 11vh, 64px);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #D8D0C8;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.35;
+  touch-action: none;
+  transition: opacity 0.08s;
+  outline: none;
+}
+.ctl.active { opacity: 0.65; }
+
+/* ============================================================
+   Main menu — atmospheric, game visible behind it
+   ============================================================ */
+#menu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  z-index: 30;
+  background: radial-gradient(ellipse at 50% 65%, rgba(8,8,13,0.25) 0%, rgba(8,8,13,0.78) 75%);
+  opacity: 1;
+  transition: opacity 1s ease;
+}
+#menu.hidden { opacity: 0; pointer-events: none; }
+#menu h1 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 500;
+  font-size: clamp(36px, 9vw, 68px);
+  letter-spacing: 0.32em;
+  margin-left: 0.32em;       /* optically recenter the letterspaced text */
+  color: #D8D0C8;
+  text-shadow: 0 0 36px rgba(232, 201, 122, 0.22);
+  animation: menuBreathe 5s ease-in-out infinite;
+}
+#menu .sub {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-size: clamp(14px, 3.4vw, 19px);
+  color: #807870;
+  margin-bottom: 42px;
+}
+#menu-play {
+  background: none;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  font-size: 17px;
+  letter-spacing: 0.45em;
+  margin-left: 0.45em;
+  color: #C8B48C;
+  padding: 14px 26px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s, color 0.3s;
+}
+#menu-play:hover, #menu-play:active {
+  color: #FFF4D6;
+  border-bottom-color: #C8B48C;
+}
+@keyframes menuBreathe {
+  0%, 100% { text-shadow: 0 0 36px rgba(232,201,122,0.18); }
+  50%      { text-shadow: 0 0 52px rgba(232,201,122,0.34); }
+}
+
+/* ============================================================
+   Chapter intro story overlay
+   ============================================================ */
+#story {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 29;
+  background: #050508;
+  padding: 0 9vw;
+  transition: opacity 1s ease;
+}
+#story.gone { opacity: 0; pointer-events: none; }
+#story-text {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(19px, 4.6vw, 30px);
+  line-height: 1.6;
+  color: #D8D0C8;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+#story-text.show { opacity: 1; }
+
+/* ============================================================
+   Kai's monologue (in-game, handwritten style)
+   ============================================================ */
+#monologue {
+  position: fixed;
+  left: 50%;
+  bottom: calc(120px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: 80vw;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(20px, 4.5vw, 27px);
+  color: #D8D0C8;
+  text-align: center;
+  text-shadow: 0 1px 14px rgba(0,0,0,0.9);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  z-index: 25;
+}
+#monologue.show { opacity: 0.92; }
+
+/* Keyboard hint — desktop only */
+#kb-hint {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #807870;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  z-index: 15;
+  pointer-events: none;
+  opacity: 0.7;
+}
+</style>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<!-- Main menu -->
+<div id="menu">
+  <h1>SHADOW FALL</h1>
+  <p class="sub">A story about what we carry</p>
+  <button id="menu-play">PLAY</button>
+</div>
+
+<!-- Chapter intro story overlay -->
+<div id="story"><p id="story-text"></p></div>
+
+<!-- Kai's in-game monologue -->
+<div id="monologue"></div>
+
+<!-- Touch controls: ← → on left, pulse + jump on right (per spec layout) -->
+<div id="controls">
+  <div class="cluster">
+    <button class="ctl" id="btn-left" aria-label="left">◀</button>
+    <button class="ctl" id="btn-right" aria-label="right">▶</button>
+  </div>
+  <div class="cluster">
+    <button class="ctl" id="btn-pulse" aria-label="pulse">💡</button>
+    <button class="ctl" id="btn-jump" aria-label="jump">▲</button>
+  </div>
+</div>
+
+<div id="kb-hint">←/→ or A/D move · Space jump · Shift run · ↓/S crouch</div>
+
+<script>
+/* ==================================================================
+   SHADOW FALL — PHASE 1: Foundation
+   ------------------------------------------------------------------
+   - Kai: walk, run, variable jump, double jump, wall slide/jump,
+     crouch, crouch-drop through one-way platforms
+   - Coyote time + jump buffering
+   - 5-layer parallax background (all procedural)
+   - Ambient ash particles (30)
+   - Touch + keyboard controls
+   No audio / HUD / lighting yet (Phase 2+).
+   ================================================================== */
+
+'use strict';
+
+/* ============================ CONSTANTS ============================ */
+
+const PHYS = {
+  GRAVITY: 1800,
+  JUMP_FORCE: -620,
+  WALK_SPEED: 180,
+  RUN_SPEED: 290,
+  WALL_SLIDE_SPEED: 60,
+  COYOTE_TIME: 120,          // ms
+  JUMP_BUFFER: 150,          // ms
+  ACCEL_TIME: 0.15,          // s, 0 → max speed
+  // Double jump: 70% of first jump's HEIGHT  →  v = v0 * sqrt(0.7)
+  DOUBLE_JUMP_VY: -620 * Math.sqrt(0.7),
+  // Wall jump: 55° away from wall, same launch speed as a jump
+  WALL_JUMP_VX: 620 * Math.cos(Phaser.Math.DegToRad(55)),
+  WALL_JUMP_VY: -620 * Math.sin(Phaser.Math.DegToRad(55)),
+  WALL_COYOTE: 100,          // ms grace after leaving a wall
+  WALL_JUMP_LOCK: 150,       // ms input lock after wall jump
+  JUMP_CUT_VY: -240          // releasing jump early clamps vy here
+};
+
+const COLORS = {
+  VOID_BLACK:   0x08080D,
+  SHADOW_DEEP:  0x0F0F18,
+  SHADOW_MID:   0x161625,
+  SHADOW_LIGHT: 0x22223A,
+  SILHOUETTE:   0x05050A,
+  KAI_RIM:      0x2A2A3E,
+  LANTERN_CORE: 0xFFF4D6,
+  LANTERN_WARM: 0xE8C97A
+};
+
+/* ====================== PHASE 1 TEST LEVEL =========================
+   Rectangles: [x, y, w, h]  (top-left corner coords)
+   Includes: flat ground, stepped platforms, a wall-jump shaft,
+   one-way platforms, and a crouch-only passage.
+   ================================================================== */
+const LEVEL = {
+  width: 4200,
+  height: 960,
+  playerStart: { x: 120, y: 800 },
+
+  /* Reachability rules (from the spec physics — do not violate):
+     single jump clears ~106px of height, double jump ~180px total;
+     walk covers ~125px of gap mid-jump, run ~200px.
+     → every required step is ≤90px up and ≤180px across. */
+  solids: [
+    [0,    900, 4200, 60],   // continuous ground
+    // step-up platforms (90 / 80 / 80 rises, gaps ≤ 110)
+    [340,  810, 180, 24],
+    [620,  730, 160, 24],
+    [870,  650, 160, 24],
+    // approach steps to the wall-jump shaft (85 / 95 rises)
+    [1280, 815, 120, 24],
+    [1480, 720, 140, 24],
+    // wall-jump shaft: two facing walls 180px apart; cross via the
+    // stepping stone above, or drop in and wall-jump back out
+    [1700, 700, 40, 200],
+    [1920, 700, 40, 200],
+    [1795, 640, 50, 16],     // stepping stone over the shaft
+    // platforms past the shaft (descending — easy)
+    [2120, 700, 160, 24],
+    [2400, 780, 160, 24],
+    // crouch passage: ceiling leaves a 40px gap above the ground
+    [2800, 820, 300, 40],
+    // final ascent (90 / 80 / 80 rises)
+    [3300, 810, 180, 24],
+    [3560, 730, 170, 24],
+    [3830, 650, 180, 24]
+  ],
+
+  // One-way platforms: land from above, crouch+jump to drop through
+  oneways: [
+    [1150, 820, 150, 14],
+    [3160, 840, 140, 14]
+  ],
+
+  // In-game monologue triggers (English story beats)
+  monologues: [
+    { x: 800,  text: "I don't remember how I got here." },
+    { x: 1750, text: "These walls... someone climbed them before me." },
+    { x: 2950, text: "Someone left these marks. Recently." },
+    { x: 3700, text: "The light ahead. It's real. I know it is." }
+  ]
+};
+
+/* ====================== UNIFIED INPUT STATE ========================
+   Touch buttons and keyboard both write here; the scene reads it.
+   ================================================================== */
+const Input = {
+  left: false, right: false, down: false,
+  jumpHeld: false, run: false, pulseHeld: false,
+  // touch-only flags merged with keyboard inside the scene
+  tLeft: false, tRight: false, tJump: false, tPulse: false
+};
+
+function bindButton(id, prop) {
+  const el = document.getElementById(id);
+  const on  = (e) => { e.preventDefault(); Input[prop] = true;  el.classList.add('active'); };
+  const off = (e) => { e.preventDefault(); Input[prop] = false; el.classList.remove('active'); };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+bindButton('btn-left',  'tLeft');
+bindButton('btn-right', 'tRight');
+bindButton('btn-jump',  'tJump');
+bindButton('btn-pulse', 'tPulse');
+
+/* Swipe up on the game area = jump (secondary control, per spec).
+   Listens on the game container only, so the buttons are unaffected. */
+(() => {
+  const area = document.getElementById('game-container');
+  let startY = 0, startT = 0, tracking = false;
+  area.addEventListener('pointerdown', (e) => {
+    tracking = true;
+    startY = e.clientY;
+    startT = performance.now();
+  });
+  const end = (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const dy = startY - e.clientY;
+    const dt = performance.now() - startT;
+    if (dy > 40 && dt < 300) {
+      // brief synthetic jump press → goes through the normal buffer logic
+      Input.tJump = true;
+      setTimeout(() => { Input.tJump = false; }, 120);
+    }
+  };
+  area.addEventListener('pointerup', end);
+  area.addEventListener('pointercancel', () => { tracking = false; });
+})();
+
+/* ================== PHASE 2: AMBIENT AUDIO =========================
+   Web Audio API only. Created on first user interaction (iOS rule).
+   55Hz sine drone + bandpassed white noise ("rain"). Nothing else yet.
+   ================================================================== */
+const AmbientAudio = {
+  started: false,
+  start() {
+    if (this.started) return;
+    this.started = true;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.ctx = ctx;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // low drone: continuous 55Hz sine
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 55;
+    const droneGain = ctx.createGain();
+    droneGain.gain.value = 0.08;
+    osc.connect(droneGain).connect(ctx.destination);
+    osc.start();
+
+    // rain: looped white noise → 800–4000Hz band
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    noise.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 800;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 4000;
+    const rainGain = ctx.createGain();
+    rainGain.gain.value = 0.04;
+    noise.connect(hp).connect(lp).connect(rainGain).connect(ctx.destination);
+    noise.start();
+  }
+};
+['pointerdown', 'touchstart', 'keydown'].forEach((ev) =>
+  window.addEventListener(ev, () => AmbientAudio.start(), { once: true })
+);
+
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+// Controls stay hidden during menu/story; shown when gameplay starts
+document.getElementById('controls').style.display = 'none';
+document.getElementById('kb-hint').style.display = 'none';
+
+/* ====================== MENU & STORY FLOW ==========================
+   gameState: 'menu' → 'story' → 'play'. Gameplay input and energy
+   drain are gated on 'play' inside Kai.update.
+   ================================================================== */
+window.gameState = 'menu';
+
+const STORY_LINES = [
+  "The rain doesn't make any sound here.",
+  "Neither does anything else.",
+  "But somewhere ahead — something is warm."
+];
+
+const menuEl = document.getElementById('menu');
+const storyEl = document.getElementById('story');
+const storyTextEl = document.getElementById('story-text');
+
+document.getElementById('menu-play').addEventListener('click', () => {
+  if (window.gameState !== 'menu') return;
+  AmbientAudio.start();
+  window.gameState = 'story';
+  menuEl.classList.add('hidden');
+  storyEl.style.display = 'flex';
+  setTimeout(() => playStoryLine(0), 800);
+});
+
+function playStoryLine(i) {
+  if (window.gameState !== 'story') return;
+  if (i >= STORY_LINES.length) { startGameplay(); return; }
+  storyTextEl.textContent = STORY_LINES[i];
+  storyTextEl.classList.add('show');
+  setTimeout(() => {
+    storyTextEl.classList.remove('show');
+    setTimeout(() => playStoryLine(i + 1), 800);
+  }, 2800);
+}
+
+// tap/click the story screen to skip
+storyEl.addEventListener('pointerdown', () => {
+  if (window.gameState === 'story') startGameplay();
+});
+
+function startGameplay() {
+  if (window.gameState === 'play') return;
+  window.gameState = 'play';
+  storyEl.classList.add('gone');
+  setTimeout(() => { storyEl.style.display = 'none'; }, 1100);
+  if (isTouch) document.getElementById('controls').style.display = 'flex';
+  else document.getElementById('kb-hint').style.display = 'block';
+}
+
+/* ---- Kai's monologue display ---- */
+let monologueTimer = null;
+function showMonologue(text) {
+  const el = document.getElementById('monologue');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(monologueTimer);
+  monologueTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+/* ===================== PROCEDURAL TEXTURES =========================
+   Everything is generated in code — no external assets.
+   ================================================================== */
+
+// Deterministic RNG so the world looks the same every run
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function generateTextures(scene) {
+  const g = scene.make.graphics({ add: false });
+
+  /* --- platform texture: stone with a faint top highlight --- */
+  g.clear();
+  g.fillStyle(COLORS.SHADOW_LIGHT, 1);
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle(0x2C2C4A, 1);
+  g.fillRect(0, 0, 64, 3);
+  g.fillStyle(0x1C1C30, 0.6);
+  const rndP = makeRng(7);
+  for (let i = 0; i < 10; i++) {
+    g.fillRect(Math.floor(rndP() * 60), 4 + Math.floor(rndP() * 56), 2 + rndP() * 4, 1);
+  }
+  g.generateTexture('platTex', 64, 64);
+
+  /* --- one-way platform texture: thinner, slightly lighter --- */
+  g.clear();
+  g.fillStyle(0x2A2A46, 1);
+  g.fillRect(0, 0, 64, 14);
+  g.fillStyle(0x383858, 1);
+  g.fillRect(0, 0, 64, 2);
+  g.generateTexture('onewayTex', 64, 14);
+
+  /* --- parallax: distant mountains (ridge polygon) --- */
+  g.clear();
+  g.fillStyle(COLORS.SHADOW_DEEP, 1);
+  const rndM = makeRng(42);
+  const pts = [{ x: 0, y: 320 }];
+  let mx = 0, my = 170;
+  while (mx < 1024) {
+    mx += 60 + rndM() * 90;
+    my = Phaser.Math.Clamp(my + (rndM() - 0.5) * 120, 60, 250);
+    pts.push({ x: Math.min(mx, 1024), y: my });
+  }
+  pts.push({ x: 1024, y: 320 });
+  g.fillPoints(pts, true);
+  g.generateTexture('mountainsTex', 1024, 320);
+
+  /* --- parallax: far trees (thin verticals) --- */
+  g.clear();
+  const rndF = makeRng(99);
+  for (let i = 0; i < 42; i++) {
+    const x = rndF() * 1024;
+    const h = 90 + rndF() * 190;
+    const w = 2 + rndF() * 3;
+    g.fillStyle(0x12121E, 1);
+    g.fillRect(x, 300 - h, w, h);
+    // tiny branches
+    for (let b = 0; b < 3; b++) {
+      const by = 300 - h + rndF() * h * 0.5;
+      const bl = 6 + rndF() * 14;
+      g.fillRect(rndF() > 0.5 ? x + w : x - bl, by, bl, 1.5);
+    }
+  }
+  g.generateTexture('farTreesTex', 1024, 300);
+
+  /* --- parallax: mid trees (thicker trunks + branches) --- */
+  g.clear();
+  const rndT = makeRng(1234);
+  for (let i = 0; i < 13; i++) {
+    const x = 30 + rndT() * 964;
+    const h = 200 + rndT() * 210;
+    const w = 8 + rndT() * 10;
+    g.fillStyle(COLORS.SHADOW_MID, 1);
+    // trunk, slightly tapered
+    g.fillTriangle(x - w / 2, 420, x + w / 2, 420, x + (rndT() - 0.5) * 8, 420 - h);
+    // branches
+    g.lineStyle(2.5, COLORS.SHADOW_MID, 1);
+    for (let b = 0; b < 4; b++) {
+      const by = 420 - h * (0.45 + rndT() * 0.5);
+      const dir = rndT() > 0.5 ? 1 : -1;
+      const bl = 18 + rndT() * 38;
+      g.lineBetween(x, by, x + dir * bl, by - bl * (0.3 + rndT() * 0.4));
+    }
+  }
+  g.generateTexture('midTreesTex', 1024, 420);
+
+  /* --- parallax: near foreground (dark ground shapes + grass) --- */
+  g.clear();
+  const rndN = makeRng(555);
+  g.fillStyle(0x1B1B30, 1);
+  g.fillRect(0, 110, 1024, 50);
+  for (let i = 0; i < 9; i++) {
+    const x = rndN() * 1024;
+    g.fillEllipse(x, 122, 90 + rndN() * 160, 50 + rndN() * 40);
+  }
+  // grass tufts
+  g.lineStyle(2, 0x20203A, 1);
+  for (let i = 0; i < 60; i++) {
+    const x = rndN() * 1024;
+    const h = 6 + rndN() * 16;
+    g.lineBetween(x, 116, x + (rndN() - 0.5) * 8, 116 - h);
+  }
+  g.generateTexture('foreTex', 1024, 160);
+
+  g.destroy();
+
+  /* --- canvas textures (need gradients): fog + lantern glow --- */
+
+  // Fog wisps
+  const fog = scene.textures.createCanvas('fogTex', 1024, 220);
+  const fctx = fog.getContext();
+  const rndW = makeRng(31);
+  for (let i = 0; i < 7; i++) {
+    const x = rndW() * 1024, y = 40 + rndW() * 140;
+    const r = 90 + rndW() * 160;
+    const grad = fctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgba(200,205,225,0.05)');
+    grad.addColorStop(1, 'rgba(200,205,225,0)');
+    fctx.fillStyle = grad;
+    fctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  fog.refresh();
+
+  // Lantern glow (small warm radial — full lighting system is Phase 2)
+  const glow = scene.textures.createCanvas('glowTex', 256, 256);
+  const gctx = glow.getContext();
+  const gg = gctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gg.addColorStop(0,    'rgba(255,236,190,0.55)');
+  gg.addColorStop(0.25, 'rgba(232,201,122,0.28)');
+  gg.addColorStop(0.6,  'rgba(180,150,90,0.08)');
+  gg.addColorStop(1,    'rgba(0,0,0,0)');
+  gctx.fillStyle = gg;
+  gctx.fillRect(0, 0, 256, 256);
+  glow.refresh();
+
+  /* --- Phase 2: lantern light spot — erased from the darkness layer.
+         Solid white core (radius ≈ 141px native) with soft falloff. --- */
+  const spot = scene.textures.createCanvas('spotTex', 512, 512);
+  const sctx = spot.getContext();
+  const sg = sctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  sg.addColorStop(0,    'rgba(255,255,255,1)');
+  sg.addColorStop(0.55, 'rgba(255,255,255,1)');
+  sg.addColorStop(0.8,  'rgba(255,255,255,0.35)');
+  sg.addColorStop(1,    'rgba(255,255,255,0)');
+  sctx.fillStyle = sg;
+  sctx.fillRect(0, 0, 512, 512);
+  spot.refresh();
+
+  /* --- Phase 2: warm amber ring at the edge of the light hole
+         (ring peak at radius ≈ 192px native) --- */
+  const edge = scene.textures.createCanvas('lightEdgeTex', 512, 512);
+  const ectx = edge.getContext();
+  const eg2 = ectx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  eg2.addColorStop(0,    'rgba(255,200,100,0)');
+  eg2.addColorStop(0.5,  'rgba(255,200,100,0)');
+  eg2.addColorStop(0.75, 'rgba(255,200,100,0.5)');
+  eg2.addColorStop(1,    'rgba(255,200,100,0)');
+  ectx.fillStyle = eg2;
+  ectx.fillRect(0, 0, 512, 512);
+  edge.refresh();
+
+  /* --- Phase 2: low-energy vignette (dark red at screen edges) --- */
+  const vig = scene.textures.createCanvas('vignetteTex', 512, 512);
+  const vctx = vig.getContext();
+  const vg = vctx.createRadialGradient(256, 256, 120, 256, 256, 362);
+  vg.addColorStop(0,   'rgba(58,21,24,0)');
+  vg.addColorStop(0.6, 'rgba(58,21,24,0.25)');
+  vg.addColorStop(1,   'rgba(58,21,24,0.9)');
+  vctx.fillStyle = vg;
+  vctx.fillRect(0, 0, 512, 512);
+  vig.refresh();
+}
+
+/* ============================== KAI ================================
+   The player. Physics body is an invisible sprite; the silhouette is
+   redrawn procedurally every frame on a Graphics object.
+   ================================================================== */
+class Kai {
+  constructor(scene, x, y) {
+    this.scene = scene;
+
+    // Physics body (invisible)
+    this.sprite = scene.physics.add.sprite(x, y, '__DEFAULT').setVisible(false);
+    this.sprite.setCollideWorldBounds(true);
+    this.sprite.setMaxVelocity(500, 1300);
+    this.setHitbox(false);
+
+    // Visuals
+    this.gfx = scene.add.graphics().setDepth(10);
+    this.glow = scene.add.image(x, y, 'glowTex')
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(9)
+      .setScale(0.9);
+
+    // Phase 2: lantern energy
+    this.energy = 80;
+    this.maxEnergy = 100;
+
+    // Movement state
+    this.facing = 1;
+    this.crouching = false;
+    this.wallSliding = false;
+    this.wallDir = 0;
+    this.canDoubleJump = false;
+    this.didDoubleJump = false;
+    this.jumpCut = true;             // true = no cuttable jump in flight
+
+    // Timers (ms timestamps)
+    this.lastGroundedAt = -99999;
+    this.lastWallAt = -99999;
+    this.lastWallDir = 0;
+    this.jumpBufferedAt = -99999;
+    this.wallJumpLockUntil = 0;
+    this.dropThroughUntil = 0;
+    this.standingOnOneWayAt = -99999;
+
+    // Animation state
+    this.walkPhase = 0;
+    this.landTimer = 0;              // ms remaining of landing squash
+    this.stretchTimer = 0;           // ms remaining of jump stretch
+    this.wasAirborne = false;
+    this.prevJumpHeld = false;
+  }
+
+  /* Hitbox: 28×48 standing, 28×30 crouched — feet stay anchored.
+     '__DEFAULT' frame is 32×32; offsets keep body bottom at y+24. */
+  setHitbox(crouched) {
+    const body = this.sprite.body;
+    if (crouched) {
+      body.setSize(28, 30);
+      body.setOffset(2, 10);
+    } else {
+      body.setSize(28, 48);
+      body.setOffset(2, -8);
+    }
+  }
+
+  // Is there a ceiling preventing us from standing up?
+  hasHeadroom() {
+    const b = this.sprite.body;
+    const checkX = b.x;
+    const checkY = b.bottom - 48;      // where a standing body's top would be
+    const bodies = this.scene.physics.overlapRect(checkX, checkY, b.width, 46, true, true);
+    for (const ob of bodies) {
+      if (ob !== b && ob.gameObject && ob.gameObject.getData('solid')) return false;
+    }
+    return true;
+  }
+
+  update(time, delta) {
+    const body = this.sprite.body;
+    const dt = delta / 1000;
+    const onGround = body.blocked.down;
+
+    /* ---------- merge keyboard + touch input (only while playing) ---------- */
+    const keys = this.scene.keys;
+    const playing = window.gameState === 'play';
+    const left  = playing && (Input.tLeft  || keys.left.isDown  || keys.a.isDown);
+    const right = playing && (Input.tRight || keys.right.isDown || keys.d.isDown);
+    const down  = playing && (keys.down.isDown || keys.s.isDown);
+    const run   = playing && keys.shift.isDown;   // run: keyboard only in Phase 1
+    const jumpHeld = playing && (Input.tJump || keys.space.isDown || keys.up.isDown || keys.w.isDown);
+    const jumpJustPressed = jumpHeld && !this.prevJumpHeld;
+    this.prevJumpHeld = jumpHeld;
+
+    if (jumpJustPressed) this.jumpBufferedAt = time;
+
+    /* ---------- ground / wall bookkeeping ---------- */
+    if (onGround) {
+      this.lastGroundedAt = time;
+      this.canDoubleJump = true;
+      this.didDoubleJump = false;
+      if (this.wasAirborne) {
+        // landing squash, scaled by impact speed
+        this.landTimer = this.prevFallSpeed > 500 ? 110 : 70;
+      }
+    }
+    this.prevFallSpeed = Math.max(0, body.velocity.y);
+    this.wasAirborne = !onGround;
+
+    /* ---------- crouch ---------- */
+    if (onGround && down && !this.crouching) {
+      this.crouching = true;
+      this.setHitbox(true);
+    } else if (this.crouching && (!down || !onGround)) {
+      if (this.hasHeadroom()) {
+        this.crouching = false;
+        this.setHitbox(false);
+      }
+    }
+
+    /* ---------- horizontal movement ---------- */
+    const inputLocked = time < this.wallJumpLockUntil;
+    let moveDir = 0;
+    if (!inputLocked) {
+      if (left && !right) moveDir = -1;
+      else if (right && !left) moveDir = 1;
+    }
+    if (moveDir !== 0) this.facing = moveDir;
+
+    let maxSpeed = run ? PHYS.RUN_SPEED : PHYS.WALK_SPEED;
+    if (this.crouching) maxSpeed *= 0.5;
+
+    const targetVx = moveDir * maxSpeed;
+    const accel = (run ? PHYS.RUN_SPEED : PHYS.WALK_SPEED) / PHYS.ACCEL_TIME;
+    const dv = targetVx - body.velocity.x;
+    const step = accel * dt * (onGround ? 1 : 0.75);   // less air control
+    if (!inputLocked || onGround) {
+      body.setVelocityX(body.velocity.x + Phaser.Math.Clamp(dv, -step, step));
+    }
+
+    /* ---------- wall slide ---------- */
+    const touchingWallDir = body.blocked.left ? -1 : (body.blocked.right ? 1 : 0);
+    this.wallSliding =
+      !onGround &&
+      touchingWallDir !== 0 &&
+      ((touchingWallDir === -1 && left) || (touchingWallDir === 1 && right)) &&
+      body.velocity.y > 0;
+
+    if (this.wallSliding) {
+      this.wallDir = touchingWallDir;
+      this.lastWallAt = time;
+      this.lastWallDir = touchingWallDir;
+      this.canDoubleJump = true;      // wall contact refreshes the air jump
+      this.didDoubleJump = false;
+      if (body.velocity.y > PHYS.WALL_SLIDE_SPEED) {
+        body.setVelocityY(PHYS.WALL_SLIDE_SPEED);
+      }
+    }
+
+    /* ---------- jumping (buffer + coyote) ---------- */
+    const buffered = time - this.jumpBufferedAt <= PHYS.JUMP_BUFFER;
+    if (buffered) {
+      const coyote = time - this.lastGroundedAt <= PHYS.COYOTE_TIME;
+      const wallGrace = time - this.lastWallAt <= PHYS.WALL_COYOTE;
+      const onOneWay = time - this.standingOnOneWayAt <= 80;
+
+      if (this.crouching && onGround && onOneWay) {
+        // crouch-jump: drop through the one-way platform
+        this.dropThroughUntil = time + 250;
+        body.setVelocityY(120);
+        this.consumeJump(time);
+      } else if (onGround || coyote) {
+        this.doJump(PHYS.JUMP_FORCE, time);
+      } else if (this.wallSliding || wallGrace) {
+        this.doWallJump(time);
+      } else if (this.canDoubleJump) {
+        this.doJump(PHYS.DOUBLE_JUMP_VY, time);
+        this.canDoubleJump = false;
+        this.didDoubleJump = true;
+      }
+    }
+
+    /* ---------- variable jump height ---------- */
+    if (!jumpHeld && !this.jumpCut && body.velocity.y < PHYS.JUMP_CUT_VY) {
+      body.setVelocityY(PHYS.JUMP_CUT_VY);
+      this.jumpCut = true;
+    }
+
+    /* ---------- Phase 2: passive energy drain (1 unit/s, gameplay only) ---------- */
+    if (playing) this.energy = Math.max(0, this.energy - dt);
+
+    /* ---------- animation bookkeeping ---------- */
+    this.walkPhase += Math.abs(body.velocity.x) * dt * 0.055;
+    if (this.landTimer > 0) this.landTimer -= delta;
+    if (this.stretchTimer > 0) this.stretchTimer -= delta;
+
+    this.draw(time);
+  }
+
+  consumeJump(time) {
+    this.jumpBufferedAt = -99999;
+    this.lastGroundedAt = -99999;
+  }
+
+  doJump(vy, time) {
+    const body = this.sprite.body;
+    if (this.crouching && !this.hasHeadroom()) { this.consumeJump(time); return; }
+    if (this.crouching) { this.crouching = false; this.setHitbox(false); }
+    body.setVelocityY(vy);
+    this.jumpCut = false;
+    this.stretchTimer = 90;
+    this.consumeJump(time);
+  }
+
+  doWallJump(time) {
+    const body = this.sprite.body;
+    const away = -this.lastWallDir;          // jump away from the wall
+    body.setVelocityX(away * PHYS.WALL_JUMP_VX);
+    body.setVelocityY(PHYS.WALL_JUMP_VY);
+    this.facing = away;
+    this.jumpCut = false;
+    this.stretchTimer = 90;
+    this.wallJumpLockUntil = time + PHYS.WALL_JUMP_LOCK;
+    this.lastWallAt = -99999;
+    this.consumeJump(time);
+  }
+
+  /* ---------- procedural silhouette drawing ----------
+     Kai is a small child in a coat and scarf, holding a lantern.
+     Drawn fresh each frame: two-segment legs with knees, a flared
+     coat, a big childlike head with hair tufts, a fluttering scarf. */
+  draw(time) {
+    const g = this.gfx;
+    const body = this.sprite.body;
+    const onGround = body.blocked.down;
+    const vx = body.velocity.x, vy = body.velocity.y;
+
+    g.clear();
+    g.setPosition(body.center.x, body.bottom);   // origin at feet
+
+    /* squash & stretch */
+    let sx = 1, sy = 1;
+    if (this.landTimer > 0) {
+      const t = this.landTimer / 110;
+      sy = 1 - 0.28 * t;
+      sx = 1 + 0.2 * t;
+    } else if (this.stretchTimer > 0) {
+      const t = this.stretchTimer / 90;
+      sy = 1 + 0.25 * t;
+      sx = 1 - 0.12 * t;
+    } else if (!onGround) {
+      sy = Phaser.Math.Clamp(1 + Math.abs(vy) / 4000, 1, 1.1);
+      sx = 2 - sy;
+    }
+
+    const f = this.facing;
+    const H = (this.crouching ? 34 : 50) * sy;
+    const moving = Math.abs(vx) > 12;
+    const running = Math.abs(vx) > PHYS.WALK_SPEED + 20;
+    const breathe = (!moving && onGround) ? Math.sin(time / 1000 * Math.PI) * 1.5 : 0;
+    const lean = onGround ? (running ? f * 6 : (moving ? f * 3 : 0)) : f * 3;
+
+    const fill = COLORS.SILHOUETTE;
+    const hipY = -H * 0.42 + breathe * 0.4;
+    const chestY = hipY - H * 0.28;
+    const neckY = hipY - H * 0.38;
+
+    /* ---- legs: hip → knee → foot, knees bend toward facing ---- */
+    const drawLeg = (footX, footY, kneeKick) => {
+      const kneeX = footX * 0.45 + kneeKick;
+      const kneeY = hipY + (footY - hipY) * 0.55;
+      g.lineStyle(4.2 * sx, fill, 1);
+      g.beginPath();
+      g.moveTo(0, hipY);
+      g.lineTo(kneeX, kneeY);
+      g.lineTo(footX, footY);
+      g.strokePath();
+      g.fillStyle(fill, 1);
+      g.fillEllipse(footX + f * 2, footY, 7, 3.5);   // small foot
+    };
+
+    if (this.wallSliding) {
+      // both feet braced against the wall
+      drawLeg(this.wallDir * 7, -4, this.wallDir * 3);
+      drawLeg(this.wallDir * 5, -10, this.wallDir * 3);
+    } else if (!onGround) {
+      if (this.didDoubleJump && vy < 0) {
+        // tuck: knees pulled to chest
+        drawLeg(f * 5, hipY + 10, f * 5);
+        drawLeg(f * 1, hipY + 12, f * 4);
+      } else if (vy < 0) {
+        // rising: front leg forward, back leg trailing
+        drawLeg(f * 8, -7, f * 4);
+        drawLeg(-f * 5, -2, f * 1);
+      } else {
+        // falling: legs reach down slightly
+        drawLeg(f * 5, -3, f * 3);
+        drawLeg(-f * 3, -1, f * 1);
+      }
+    } else if (moving) {
+      const amp = running ? 11 : 7;
+      const liftAmp = running ? 5 : 3;
+      const ph = this.walkPhase;
+      const lift = (p) => Math.max(0, Math.sin(p)) * liftAmp;
+      drawLeg(Math.sin(ph) * amp, -lift(ph + Math.PI / 4), f * 2.5);
+      drawLeg(Math.sin(ph + Math.PI) * amp, -lift(ph + Math.PI + Math.PI / 4), f * 2.5);
+    } else {
+      drawLeg(-4, 0, f * 2);
+      drawLeg(4.5, 0, f * 2);
+    }
+
+    /* ---- back arm: swings opposite the front leg ---- */
+    const armSwing = (moving && onGround) ? Math.sin(this.walkPhase + Math.PI) * 4 : 0;
+    g.lineStyle(3.2 * sx, fill, 1);
+    g.beginPath();
+    g.moveTo(lean * 0.4 - f * 3, neckY + 3);
+    g.lineTo(-f * 6 - armSwing, chestY + 6);
+    g.lineTo(-f * 7 - armSwing, hipY - 2);
+    g.strokePath();
+
+    /* ---- coat: narrow shoulders flaring to the hem (childlike) ---- */
+    const shW = 5.5 * sx, hemW = 9 * sx;
+    g.fillStyle(fill, 1);
+    g.beginPath();
+    g.moveTo(lean * 0.4 - shW, neckY);
+    g.lineTo(lean * 0.4 + shW, neckY);
+    g.lineTo(lean * 0.2 + hemW, hipY + 5);
+    g.lineTo(lean * 0.2 - hemW + (moving ? -f * 2 : 0), hipY + 5);  // hem trails when moving
+    g.closePath();
+    g.fillPath();
+    g.lineStyle(1, COLORS.KAI_RIM, 0.5);
+    g.strokePath();
+
+    /* ---- scarf: flutters away from motion ---- */
+    const flow = Phaser.Math.Clamp(-vx / 55, -7, 7);
+    g.lineStyle(2.8, 0x1A1A2C, 1);
+    g.beginPath();
+    let spx = lean * 0.4 - f * 3, spy = neckY + 1;
+    g.moveTo(spx, spy);
+    for (let s = 1; s <= 3; s++) {
+      spx += -f * 4 + flow + Math.sin(time / 180 + s) * 1.3;
+      spy += 2.5 + s * 0.7 + (onGround ? 0 : -vy / 400);
+      g.lineTo(spx, spy);
+    }
+    g.strokePath();
+
+    /* ---- head: big and round (child proportions), hair tufts ---- */
+    const headR = 7.5 * sx;
+    const headX = lean + f * 2;
+    const headY = neckY - headR + 1 + breathe * 0.3;
+    g.fillStyle(fill, 1);
+    g.fillCircle(headX, headY, headR);
+    // messy hair tufts
+    g.fillTriangle(
+      headX - headR * 0.7, headY - headR * 0.6,
+      headX - headR * 0.15, headY - headR * 1.35,
+      headX + headR * 0.3, headY - headR * 0.75
+    );
+    g.fillTriangle(
+      headX + headR * 0.05, headY - headR * 0.85,
+      headX + headR * 0.65, headY - headR * 1.25,
+      headX + headR * 0.85, headY - headR * 0.45
+    );
+    // tiny nose hint on the facing side
+    g.fillCircle(headX + f * headR * 0.95, headY + 1.5, 1.6);
+    g.lineStyle(1, COLORS.KAI_RIM, 0.5);
+    g.strokeCircle(headX, headY, headR);
+
+    /* ---- front arm + lantern (elbow bent, lantern hangs low) ---- */
+    const handSwing = (moving && onGround) ? Math.sin(this.walkPhase) * 2 : 0;
+    const lx = f * (10 + handSwing);
+    const ly = chestY + 6 + Math.sin(time / 700) * 1.2;
+    g.lineStyle(3.2 * sx, fill, 1);
+    g.beginPath();
+    g.moveTo(lean * 0.4 + f * 4, neckY + 3);
+    g.lineTo(f * 8.5, chestY + 3);
+    g.lineTo(lx, ly - 2);
+    g.strokePath();
+    // lantern: curved handle + small body
+    g.lineStyle(1.5, fill, 1);
+    g.beginPath();
+    g.arc(lx, ly + 1, 3, Math.PI, 0);
+    g.strokePath();
+    g.fillStyle(fill, 1);
+    g.fillRoundedRect(lx - 3.5, ly + 1, 7, 9, 2);
+    // flame
+    const flicker = 0.85 + Math.sin(time / 90) * 0.1 + Math.sin(time / 37) * 0.05;
+    g.fillStyle(COLORS.LANTERN_CORE, flicker);
+    g.fillCircle(lx, ly + 5.5, 2.4);
+    g.fillStyle(COLORS.LANTERN_WARM, 0.35 * flicker);
+    g.fillCircle(lx, ly + 5.5, 5.5);
+
+    /* glow follows the lantern */
+    this.glow.setPosition(g.x + lx, g.y + ly + 5.5);
+    this.glow.setAlpha(0.5 * flicker);
+    this.glow.setScale(0.85 + Math.sin(time / 450) * 0.04);
+  }
+}
+
+/* ============================ BOOT SCENE =========================== */
+class BootScene extends Phaser.Scene {
+  constructor() { super('BootScene'); }
+  create() {
+    generateTextures(this);
+    this.scene.start('GameScene');
+  }
+}
+
+/* ============================ GAME SCENE =========================== */
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+
+    this.physics.world.setBounds(0, 0, LEVEL.width, LEVEL.height);
+
+    /* ---------- parallax background (5 layers + void base) ---------- */
+    this.parallax = [];
+    const addLayer = (key, texH, factor, bottomFrac, alpha, depth) => {
+      const ts = this.add.tileSprite(0, 0, W, texH, key)
+        .setOrigin(0, 1)
+        .setScrollFactor(0)
+        .setDepth(depth)
+        .setAlpha(alpha);
+      const layer = { ts, factor, bottomFrac, texH };
+      this.parallax.push(layer);
+      return layer;
+    };
+    addLayer('fogTex',       220, 0.05, 0.62, 0.9,  1);
+    addLayer('mountainsTex', 320, 0.10, 0.80, 1,    2);
+    addLayer('farTreesTex',  300, 0.20, 0.96, 1,    3);
+    addLayer('midTreesTex',  420, 0.40, 1.02, 1,    4);
+    addLayer('foreTex',      160, 0.70, 1.06, 1,    5);
+    this.layoutParallax();
+
+    /* ---------- level geometry ---------- */
+    this.solids = this.physics.add.staticGroup();
+    for (const [x, y, w, h] of LEVEL.solids) {
+      const ts = this.add.tileSprite(x + w / 2, y + h / 2, w, h, 'platTex').setDepth(6);
+      this.physics.add.existing(ts, true);
+      ts.setData('solid', true);
+      this.solids.add(ts);
+    }
+
+    this.oneways = this.physics.add.staticGroup();
+    for (const [x, y, w, h] of LEVEL.oneways) {
+      const ts = this.add.tileSprite(x + w / 2, y + h / 2, w, h, 'onewayTex').setDepth(6);
+      this.physics.add.existing(ts, true);
+      // collide only when landing from above
+      ts.body.checkCollision.down = false;
+      ts.body.checkCollision.left = false;
+      ts.body.checkCollision.right = false;
+      this.oneways.add(ts);
+    }
+
+    /* ---------- player ---------- */
+    this.kai = new Kai(this, LEVEL.playerStart.x, LEVEL.playerStart.y);
+
+    this.physics.add.collider(this.kai.sprite, this.solids);
+    this.physics.add.collider(
+      this.kai.sprite,
+      this.oneways,
+      (player) => { this.kai.standingOnOneWayAt = this.time.now; },
+      () => this.time.now >= this.kai.dropThroughUntil   // allow drop-through
+    );
+
+    /* ---------- keyboard ---------- */
+    this.keys = this.input.keyboard.addKeys({
+      left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN',
+      a: 'A', d: 'D', w: 'W', s: 'S',
+      space: 'SPACE', shift: 'SHIFT'
+    });
+
+    /* ---------- camera ---------- */
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, LEVEL.width, LEVEL.height);
+    cam.startFollow(this.kai.sprite, true, 0.12, 0.12);
+    cam.setDeadzone(70, 110);
+    cam.setBackgroundColor(COLORS.VOID_BLACK);
+
+    /* ---------- ambient ash (30 particles, screen space) ---------- */
+    this.ash = [];
+    const rnd = makeRng(2024);
+    for (let i = 0; i < 30; i++) {
+      this.ash.push({
+        x: rnd() * W, y: rnd() * H,
+        vy: 8 + rnd() * 16,
+        swayAmp: 6 + rnd() * 14,
+        swayFreq: 0.3 + rnd() * 0.6,
+        phase: rnd() * Math.PI * 2,
+        size: 1 + rnd() * 2,
+        alpha: 0.1 + rnd() * 0.2
+      });
+    }
+    this.ashG = this.add.graphics().setScrollFactor(0).setDepth(15);
+
+    /* ---------- Phase 2: darkness + lantern light hole ---------- */
+    // Screen-space render texture: filled black each frame, then the
+    // light spot is erased out of it to reveal the scene beneath.
+    this.darknessRT = this.add.renderTexture(0, 0, W, H)
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(50);
+    this.spotImage = this.make.image({ key: 'spotTex', add: false });
+    this.warmEdge = this.add.image(0, 0, 'lightEdgeTex')
+      .setScrollFactor(0).setDepth(51)
+      .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.3);
+    this.vignette = this.add.image(W / 2, H / 2, 'vignetteTex')
+      .setScrollFactor(0).setDepth(55).setAlpha(0).setDisplaySize(W, H);
+
+    /* ---------- Phase 2: ember particles ---------- */
+    this.embers = [];
+    this.emberTimer = 0;
+    this.emberG = this.add.graphics().setDepth(11);
+
+    /* ---------- Phase 2: HUD energy bar ---------- */
+    this.hudG = this.add.graphics().setScrollFactor(0).setDepth(60);
+
+    /* ---------- story: monologue triggers ---------- */
+    this.monologues = LEVEL.monologues.map((m) => ({ ...m, shown: false }));
+
+    /* ---------- resize handling ---------- */
+    this.scale.on('resize', () => {
+      this.layoutParallax();
+      const W2 = this.scale.width, H2 = this.scale.height;
+      this.darknessRT.resize(W2, H2);
+      this.vignette.setPosition(W2 / 2, H2 / 2).setDisplaySize(W2, H2);
+    });
+  }
+
+  layoutParallax() {
+    const W = this.scale.width, H = this.scale.height;
+    for (const l of this.parallax) {
+      l.ts.setSize(W, l.texH);
+      l.ts.setPosition(0, H * l.bottomFrac);
+    }
+  }
+
+  update(time, delta) {
+    this.kai.update(time, delta);
+
+    /* parallax scroll */
+    const sx = this.cameras.main.scrollX;
+    for (const l of this.parallax) l.ts.tilePositionX = sx * l.factor;
+    this.parallax[0].ts.tilePositionX += time * 0.004;   // fog self-drift
+
+    /* ash particles */
+    const W = this.scale.width, H = this.scale.height;
+    const dt = delta / 1000;
+    const g = this.ashG;
+    g.clear();
+    for (const p of this.ash) {
+      p.y += p.vy * dt;
+      const drawX = p.x + Math.sin(time / 1000 * p.swayFreq * Math.PI * 2 + p.phase) * p.swayAmp;
+      if (p.y > H + 4) { p.y = -4; p.x = Math.random() * W; }
+      g.fillStyle(0x808090, p.alpha);
+      g.fillRect(drawX, p.y, p.size, p.size);
+    }
+
+    /* ---------- Phase 2: darkness + flickering lantern hole ---------- */
+    const cam = this.cameras.main;
+    const kb = this.kai.sprite.body;
+    const holeX = kb.center.x - cam.scrollX;
+    const holeY = kb.center.y - cam.scrollY;
+    const holeRadius = 120 + (Math.random() * 6 - 3);   // ±3px flicker
+    this.darknessRT.clear();
+    this.darknessRT.fill(0x000000, 0.88);
+    this.spotImage.setScale(holeRadius / 141);          // 141 = spotTex solid-core radius
+    this.darknessRT.erase(this.spotImage, holeX, holeY);
+    this.warmEdge.setPosition(holeX, holeY).setScale((holeRadius + 8) / 192);
+
+    /* ---------- Phase 2: ember particles (1 per 300ms from chest) ---------- */
+    this.emberTimer += delta;
+    if (this.emberTimer >= 300) {
+      this.emberTimer = 0;
+      this.embers.push({ x: kb.center.x, y: kb.center.y - 6, t: 0 });
+    }
+    const eg = this.emberG;
+    eg.clear();
+    for (let i = this.embers.length - 1; i >= 0; i--) {
+      const e = this.embers[i];
+      e.t += dt;
+      if (e.t >= 1.2) { this.embers.splice(i, 1); continue; }
+      const k = e.t / 1.2;
+      eg.fillStyle(0xE8C97A, 1 - k);
+      eg.fillCircle(e.x + Math.sin(e.t * 6 + e.y) * 1.5, e.y - 30 * k, 2);
+    }
+
+    /* ---------- Phase 2: HUD energy bar + low-energy vignette ---------- */
+    const energy = this.kai.energy;
+    const hg = this.hudG;
+    hg.clear();
+    if (window.gameState === 'play') {
+      hg.fillStyle(0x1a1a1a, 1);
+      hg.fillRect(16, 16, 200, 4);
+      hg.fillStyle(0xE8C97A, 1);
+      hg.fillRect(16, 16, 200 * (energy / this.kai.maxEnergy), 4);
+    }
+    this.vignette.setAlpha(energy < 20 ? (1 - energy / 20) * 0.85 : 0);
+
+    /* ---------- story: fire monologues as Kai passes trigger points ---------- */
+    if (window.gameState === 'play') {
+      for (const m of this.monologues) {
+        if (!m.shown && this.kai.sprite.x >= m.x) {
+          m.shown = true;
+          showMonologue(m.text);
+        }
+      }
+    }
+
+    /* fell out of the world → gentle reset (real death system is Phase 3) */
+    if (this.kai.sprite.y > LEVEL.height + 100) {
+      this.kai.sprite.setPosition(LEVEL.playerStart.x, LEVEL.playerStart.y);
+      this.kai.sprite.setVelocity(0, 0);
+    }
+  }
+}
+
+/* ========================= PHASER CONFIG =========================== */
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game-container',
+  backgroundColor: '#08080D',
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: window.innerWidth,
+    height: window.innerHeight
+  },
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: PHYS.GRAVITY },
+      debug: false
+    }
+  },
+  render: { antialias: true },
+  scene: [BootScene, GameScene]
+};
+
+window.game = new Phaser.Game(config);
+</script>
+</body>
+</html>
