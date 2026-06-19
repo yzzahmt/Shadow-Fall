@@ -1,0 +1,11 @@
+# bağımlılıklar
+node_modules/
+
+# geliştirme ekran görüntüleri (yeniden üretilebilir)
+shot_*.png
+_*.png
+
+# eski yedekler / geçici
+index_backup_*.html
+*.bak
+.DS_Store
