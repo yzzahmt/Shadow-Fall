@@ -518,11 +518,17 @@ const Atmo = {
         angle: 4,
       }).setDepth(880).setScrollFactor(0);
     }
+    /* bina içine girince yağmur / yakın kül kesilir */
+    sys.setIndoor = (on) => {
+      sys.rain?.setVisible(!on);
+      sys.nearAsh?.setVisible(!on);
+      if (sys.rain) { if (on) sys.rain.stop(); else sys.rain.start(); }
+    };
     return sys;
   },
 
   // önplan siluet bantı — zeminin "kara toprak" görünümü
-  drawGroundStrip(scene, graphics, x0, x1, yTop, seed, color = 0x0a0a0e) {
+  drawGroundStrip(scene, graphics, x0, x1, yTop, seed, color = 0x0a0a0e, grass = true) {
     const rng = Atmo._mulberry(seed);
     graphics.fillStyle(color, 1);
     graphics.beginPath();
@@ -553,9 +559,9 @@ const Atmo = {
       graphics.fillEllipse(x, y, r * 2.2, r * 1.4);
     }
     graphics.fillStyle(color, 1);
-    // seyrek ot kümeleri
+    // seyrek ot kümeleri (yalnız toprakta — beton/metal/tahta zeminde ot yok)
     graphics.lineStyle(1.6, color, 1);
-    for (let x = x0; x < x1; x += 12 + rng() * 36) {
+    for (let x = x0; grass && x < x1; x += 12 + rng() * 36) {
       const h = 5 + rng() * 14, lean = (rng() - 0.5) * 8;
       graphics.beginPath();
       graphics.moveTo(x, yTop + 2);

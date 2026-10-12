@@ -22,7 +22,7 @@ Oyun döngüsü:
     eğilmek ve siper (araba vb.) arkasında kalmak gizler.
   • 4 can hücresi. Bandaj 2 can doldurur. Ölünce son kontrol
     noktasından devam.
-  • Her 10. bölüm boss / sınav bölümü. Boss ölmeden kapı açılmaz.
+  • Boss bölümleri kaldırıldı (v1.0.0): her bölümde en az bir bulmaca var.
   • Her 2-4 bölümde bir ÖZEL GÖREV gelir (bkz. bölüm 4).
 
 Eşyalar: levye (kutu açar), anahtar, pil, bandaj, tabanca, şarjör,
@@ -319,7 +319,7 @@ Yapı
   js/atmosphere.js .. paralaks, sis, gren, vinyet, korku/ısı efektleri
   js/audio.js ....... tüm sesler ve ambient müzik
 
-  Çalıştırma: klasörde `npx http-server -p 8765` (veya .claude/launch.json),
+  Çalıştırma: klasörde `npm run serve` (http://localhost:8765),
   tarayıcıda http://localhost:8765 . Telefonda aynı ağdan bilgisayarın
   IP'si ile açılabilir.
 ================================================================

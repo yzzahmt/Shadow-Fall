@@ -88,7 +88,7 @@ YAPILACAKLAR
   [ ] Giriş ve uyanma sahnesinin zamanlamasını gerçek hızda izleyip ayarla.
   [ ] Görev dengesi: yangın hızı, dev hızı, bomba süresi, araba rampa
       hızı, su yükselme hızı.
-  [ ] Her boss bölümüne kendine özgü bir mekanik.
+  [x] Boss bölümleri kaldırıldı (v1.0.0 — bkz. Oyunileilgili.txt).
   [ ] Ayarlara "kontrol hassasiyeti" ve "titreşim".
   [ ] Bölüm sonu özet ekranı (süre, ölüm sayısı, bulunan eşya).
   [ ] Yeni görev türleri: asansör kaçışı, tren, karanlıkta sesle ilerleme.

@@ -142,12 +142,16 @@ const SFAudio = (() => {
     amb.droneGain.gain.linearRampToValueAtTime(0.012 + v * 0.05, t + 1.2);
     amb.heartRate = 1 + v * 1.1;
   }
+  let weather = { rain: 0, wind: 0.5 }, indoor = false;
   function setWeather(rainV, windV) {
+    weather = { rain: rainV, wind: windV };
     if (!started || !amb.rainGain) return;
     const t = ctx.currentTime;
-    amb.rainGain.gain.linearRampToValueAtTime(rainV * 0.16, t + 2);
-    amb.windGain.gain.linearRampToValueAtTime(0.03 + windV * 0.08, t + 2);
+    const k = indoor ? 0.18 : 1;              // içeride yağmur/rüzgâr boğuklaşır
+    amb.rainGain.gain.linearRampToValueAtTime(rainV * 0.16 * k, t + 1.2);
+    amb.windGain.gain.linearRampToValueAtTime((0.03 + windV * 0.08) * (indoor ? 0.35 : 1), t + 1.2);
   }
+  function setIndoor(on) { indoor = !!on; setWeather(weather.rain, weather.wind); }
 
   // ============ ONE-SHOT SFX ============
   function envGain(t, a, peak, dur) {
@@ -1140,8 +1144,10 @@ const SFAudio = (() => {
     magDrop, magIn, rack, playerShot, dryFire, leverCreak,
     generatorStart, carStart, houndGrowl, houndYelp, lurkerWhisper,
     radioChirp, screech, bombBeep, wireCut, explosion, rumble, heartbeat, fireLoop, waterLoop, simonTone,
-    playIntroTheme, playHopeMotif, playDeathChord,
+    playIntroTheme, playHopeMotif, playDeathChord, setIndoor, tickHit,
     padChord, startMusicBed, stopMusicBed, setMusicIntensity, setActionLevel,
     get ctx() { return ctx; },
+    get musicBus() { return musicBus; },
+    noise: () => getNoise(),
   };
 })();

@@ -10,5 +10,21 @@ index_backup_*.html
 *.bak
 .DS_Store
 
-# editör / araç ayarları
-.claude/
+# editör ayarları
+.vscode/
+.idea/
+
+# derleme çıktıları
+www/
+release/
+*.aab
+*.apk
+
+# imza anahtarı — asla repoya girmez
+*.jks
+*.keystore
+keystore.properties
+
+# yerel dosyalar
+_yedek_test.txt
+touch_end.png

@@ -3,7 +3,7 @@
    100 bölüm, el feneri + pil ekonomisi, su/rüzgâr fizikleri,
    kenar sistemi (uçurumda durma, kenara tutunma, tırmanma,
    kaçarken refleksle yakalama), sert inişte yuvarlanma,
-   tabanca + şarjör değişimi, eşya alma, bandaj, boss kapıları,
+   tabanca + şarjör değişimi, eşya alma, bandaj, bulmacalar, yapılar,
    ses yayılımı (NPC'ler duyduğu yere gider), elektrik kesintileri.
    Hikâye yalnız giriş sinematiğinde ve finalde anlatılır.
    ============================================================ */
@@ -184,11 +184,13 @@ class GameScene extends Phaser.Scene {
     SFAudio.init(); SFAudio.resume(); SFAudio.startAmbience();
     SFAudio.setWeather(ch.rain ?? 0, ch.wind ?? 0.5);
     SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music);
-    /* duygusal müzik altyapısı — intro kendi temasını çalar, bölümlerde kısık underscore */
+    /* müzik: bölümde sahneye göre parça değişir (bkz. music.js); giriş kendi temasını çalar */
     SFAudio.stopMusicBed();
-    if (!this.isIntro) SFAudio.startMusicBed(0.42 - (ch.dark ?? 0) * 0.1, ch.biome, { act: ch.act, level: ch.id, boss: !!ch.bossName });
+    if (this.isIntro) SFMusic.stop(0.8);
+    else SFMusic.setScene(ch.interior ? 'interior' : 'explore', ch.biome, 0);
     this.events.once('shutdown', () => {
       SFAudio.stopMusicBed();
+      SFMusic.stop(0.6);
       const M = this.mis;
       M?.fire?.snd?.stop(); M?.flood?.hiss?.stop(); M?.vehicle?.engine?.stop(0.2);
       UI.showBombHud(false); UI.hide('bomb-panel'); UI.hide('keypad-panel'); UI.showTutorial(null); UI.showCode(null);
@@ -289,6 +291,7 @@ class GameScene extends Phaser.Scene {
     /* ---- oyun nesneleri ---- */
     this.physItems = [];
     this.crates = [];
+    this.containers = [];
     this.pushboxes = [];
     this.doors = [];
     this.soldiers = [];
@@ -301,7 +304,6 @@ class GameScene extends Phaser.Scene {
     this.bullets = [];
     this.playerBullets = [];
     this.driveCar = null;
-    this.bossGate = null;
 
     if (!this.isIntro) this.buildGameplay();
 
@@ -347,6 +349,8 @@ class GameScene extends Phaser.Scene {
       if (this.levelId === 1 && !this.spawnX) this.player.wakeT = 4.2;
       this.hint = new InteractHint(this);
       Missions.setup(this);
+      Puzzles.setup(this);
+      Buildings.setup(this);
       UI.showHUD(!this.player.wakeT);
       UI.updateHP(this.hp, this.hpMax);
       this.syncHUD();
@@ -386,11 +390,6 @@ class GameScene extends Phaser.Scene {
     UI.fadeIn();
     if (!this.isIntro) {
       if (!(this.levelId === 1 && !this.spawnX)) UI.showChapterCard(this.ch);
-      if (this.ch.bossName) {
-        this.time.delayedCall(1500, () => {
-          if (!this.cineLock && !this.finished && !this.dead) UI.showBossBar(this.ch.bossName, 1);
-        });
-      }
     }
   }
 
@@ -420,7 +419,7 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(70);
     let i = 0;
     for (const seg of this.groundSegs) {
-      Atmo.drawGroundStrip(this, g, seg.x0, seg.x1, seg.y, this.ch.id * 100 + i * 7 + 3, 0x0a0a0e);
+      Atmo.drawGroundStrip(this, g, seg.x0, seg.x1, seg.y, this.ch.id * 100 + i * 7 + 3, 0x0a0a0e, (seg.material ?? 'earth') === 'earth' && !this.ch.interior);
       i++;
     }
     for (const p of this.platforms) {
@@ -476,14 +475,16 @@ class GameScene extends Phaser.Scene {
   buildGameplay() {
     const ch = this.ch;
     for (const c of (ch.crates ?? [])) this.crates.push(new Crate(this, c));
+    for (const c of (ch.containers ?? [])) this.containers.push(new Container(this, c));
     for (const p of (ch.pushboxes ?? [])) this.pushboxes.push(new PushBox(this, p));
     for (const it of (ch.looseItems ?? [])) this.physItems.push(new PhysItem(this, it.kind, it.x, it.y));
     if (ch.fallbackCrowbarAt && !this.carry.crowbar) {
       this.physItems.push(new PhysItem(this, 'crowbar', ch.fallbackCrowbarAt.x, ch.fallbackCrowbarAt.y));
     }
     // levyesiz oyuncu için yedek levye (kutu bulmacaları kilitlenmesin)
-    if (!this.carry.crowbar && (ch.crates ?? []).length && this.levelId > 1) {
-      const c0 = ch.crates[0];
+    const firstPry = [...(ch.crates ?? []), ...(ch.containers ?? []).filter(c => c.needsCrowbar)].sort((a, b) => a.x - b.x)[0];
+    if (!this.carry.crowbar && firstPry && this.levelId > 1) {
+      const c0 = firstPry;
       this.physItems.push(new PhysItem(this, 'crowbar', Math.max(220, c0.x - 160), this.groundYAt(Math.max(220, c0.x - 160)) - 40));
     }
     for (const d of (ch.doors ?? [])) this.doors.push(new Door(this, d));
@@ -513,18 +514,6 @@ class GameScene extends Phaser.Scene {
       this.barricades.push({ x: b.x, groundY: b.groundY, body, gfx, crushed: false });
     }
     if (ch.driveCar) this.driveCar = new DriveCar(this, ch.driveCar);
-    if (ch.bossGate) {
-      const bg = ch.bossGate;
-      const gy = this.groundYAt(bg.x - 40);
-      this.bossGate = {
-        x: bg.x, y: gy, h: bg.h, open: false, slide: 0,
-        body: this.matter.add.rectangle(bg.x, gy - bg.h / 2, 16, bg.h, {
-          isStatic: true, label: 'bossgate', collisionFilter: { category: CAT.WORLD, mask: 0xFFFF },
-        }),
-        gfx: this.add.graphics().setDepth(92),
-      };
-      this.drawGrate(this.bossGate);
-    }
     for (const s of (ch.soldiers ?? [])) {
       const sol = new Soldier(this, {
         x: s.x, groundY: this.groundYAt(s.x),
@@ -532,7 +521,6 @@ class GameScene extends Phaser.Scene {
         facing: s.facing ?? -1, static: s.static,
         hp: s.hp, tough: s.tough, hasCarKey: s.hasCarKey,
       });
-      sol.gate = !!s.gate;
       sol.onShoot = (x, y, dir, target) => this.spawnBullet(x, y, dir, target);
       this.soldiers.push(sol);
     }
@@ -540,7 +528,6 @@ class GameScene extends Phaser.Scene {
       const cr = spawnCreature(this, {
         ...c, groundY: this.groundYAt(c.x),
       });
-      cr.gate = !!c.gate;
       cr.onStrike = (dmg) => this.damagePlayer(dmg ?? 2, cr.facing ?? 0);
       this.creatures.push(cr);
     }
@@ -579,6 +566,23 @@ class GameScene extends Phaser.Scene {
       if (lad) lad.lower();
     }
     if (link?.door) this.openGrate(this.poweredDoors.find(p => p.id === link.door), 'Bir kapak açıldı!');
+    if (link?.puzzle) Puzzles.onLever(this, link.puzzle);
+  }
+
+  /* basamaklı merdivene gir: k=0 dipten, k=1 tepeden; auto: dokunarak başlatıldıysa kendiliğinden yürür */
+  enterStair(s, k, auto) {
+    const P = this.player;
+    if (!P || P.stair) return;
+    this.setCrouch(false);
+    P.stair = { s, k, auto: auto ?? 0, v: 0 };
+    P.climbing = false; P.slideT = 0; P.rollT = 0;
+    P.body.collisionFilter.mask = 0;
+  }
+  /* bir noktada basılabilir yüzey var mı (merdiven çıkışı için) */
+  surfaceNear(x, y) {
+    for (const g of this.groundSegs) if (x >= g.x0 && x <= g.x1 && Math.abs(g.y - y) < 8) return true;
+    for (const p of this.platforms) if (!p.ceiling && x >= p.x && x <= p.x + p.w && Math.abs(p.y - y) < 8) return true;
+    return false;
   }
   onGeneratorPowered(id) {
     const link = this.ch.genLinks?.[id];
@@ -646,7 +650,7 @@ class GameScene extends Phaser.Scene {
         inertia: Infinity, friction: 0, frictionStatic: 0, frictionAir: 0,   // hızı kod yönetir; sürtünme kare hızına göre değişmesin
         chamfer: { radius: [3, 3, 7, 7] },   // yuvarlak alt köşeler: tahta/zemin eklerine takılmaz
         restitution: 0, label: 'player', density: 0.0024,
-        collisionFilter: { category: CAT.PLAYER, mask: CAT.WORLD | CAT.PUSHBOX | CAT.ITEM },
+        collisionFilter: { category: CAT.PLAYER, mask: CAT.WORLD | CAT.PUSHBOX },
       }),
       grounded: false, wasGrounded: false, groundMat: 'earth',
       crouching: false, hidden: false, facing: 1,
@@ -675,6 +679,7 @@ class GameScene extends Phaser.Scene {
     const T = [];
     for (const it of this.physItems) if (!it.picked && it.def.pickable) T.push({ x: it.x, y: it.y, ax: it.x });
     for (const c of this.crates) if (!c.opened) T.push({ x: c.x, y: c.y, ax: c.x });
+    for (const c of this.containers) if (!c.opened) T.push({ x: c.x, y: c.y, ax: c.x });
     for (const l of this.levers) if (!l.pulled) T.push({ x: l.x, y: l.groundY - 40, ax: l.x });
     for (const d of this.doors) if (!d.open) T.push({ x: d.x, y: d.groundY - d.h / 2, ax: d.x - 30 * Math.sign(d.x - this.player.body.position.x) });
     for (const g of this.generators) if (!g.powered) T.push({ x: g.x, y: g.groundY - 30, ax: g.x });
@@ -688,6 +693,8 @@ class GameScene extends Phaser.Scene {
       if (M.bomb && !M.bomb.done) T.push({ x: M.bomb.x, y: M.bomb.groundY - 30, ax: M.bomb.x - 30 });
       if (M.vehicle && !M.vehicle.started) T.push({ x: M.vehicle.x, y: M.vehicle.y - 30, ax: M.vehicle.x });
     }
+    T.push(...Puzzles.tapTargets(this));
+    for (const s of (this.stairs ?? [])) T.push({ x: s.x0 + s.dir * 40, y: s.y0 - 40, ax: s.x0 });
     return T;
   }
   handleTap(sx, sy) {
@@ -733,6 +740,7 @@ class GameScene extends Phaser.Scene {
     const w = this._screenToWorld(sx, sy);
     // yanındaki kutuya basılı tut = levyeyle zorla (basılı kaldıkça devam eder)
     for (const c of this.crates) if (!c.opened && Math.hypot(c.x - w.x, c.y - w.y) < 80 && Math.abs(c.x - P.body.position.x) < 75) Input.actHit = true;
+    for (const c of this.containers) if (!c.opened && c.needsCrowbar && Math.hypot(c.x - w.x, c.y - w.y) < 80 && Math.abs(c.x - P.body.position.x) < 75) Input.actHit = true;
     // uzaktaki kutuya basılı tutulduysa önce oraya yürü (tutma, varınca başlar)
     for (const c of this.crates) if (!c.opened && Math.hypot(c.x - w.x, c.y - w.y) < 70 && Math.abs(c.x - P.body.position.x) > 60) { P.autoX = c.x - 40 * Math.sign(c.x - P.body.position.x); P.autoAct = true; }
     for (const pb of this.pushboxes) {
@@ -779,6 +787,29 @@ class GameScene extends Phaser.Scene {
     }).setDepth(72);
     p.explode(Math.round(5 + power * 9));
     this.time.delayedCall(700, () => p.destroy());
+  }
+
+  /* x'teki zemin şeridinden başlayarak aynı yükseklikte kesintisiz yürünebilen aralık
+     (yaratıkların kovalama bölgesi). Duvar ya da uçurum aralığı keser. */
+  walkRange(x, y) {
+    const segs = this.groundSegs.filter(s => Math.abs(s.y - y) < 3).sort((a, b) => a.x0 - b.x0);
+    const i = segs.findIndex(s => x >= s.x0 - 2 && x <= s.x1 + 2);
+    if (i < 0) return null;
+    let lo = segs[i].x0, hi = segs[i].x1;
+    for (let k = i + 1; k < segs.length && segs[k].x0 <= hi + 4; k++) hi = Math.max(hi, segs[k].x1);
+    for (let k = i - 1; k >= 0 && segs[k].x1 >= lo - 4; k--) lo = Math.min(lo, segs[k].x0);
+    /* duvarlar: ayak hizasını kesen her duvar aralığı daraltır */
+    for (const w of (this.ch.walls ?? [])) {
+      if (w.y0 > y - 20 || w.y1 < y - 40) continue;
+      if (w.x > x && w.x < hi) hi = w.x - 16;
+      if (w.x < x && w.x > lo) lo = w.x + 16;
+    }
+    for (const d of (this.ch.doors ?? [])) {
+      if (Math.abs(d.groundY - y) > 4) continue;
+      if (d.x > x && d.x < hi) hi = d.x - 16;
+      if (d.x < x && d.x > lo) lo = d.x + 16;
+    }
+    return [lo + 10, hi - 10];
   }
 
   groundYAt(x) {
@@ -921,6 +952,7 @@ class GameScene extends Phaser.Scene {
       P.hang = null; P.hangCD = 0.35;               // geriye, boşluğa doğru sıçra
       P.facing = Hg.side; P.jumpedAt = true;
       MatterLib.Body.setVelocity(body, { x: Hg.side * 3.4, y: -8.6 });
+      P.launchOK = true;
       SFAudio.jump();
     } else if (up && Hg.t > 0.18) {
       /* üst tarafta baş boşluğu var mı? (tavan/kutu varsa çıkamaz, sarkmaya devam) */
@@ -950,7 +982,7 @@ class GameScene extends Phaser.Scene {
     P.facing = -M.side;
     if (M.p >= 1) {
       P.mantle = null;
-      body.collisionFilter.mask = CAT.WORLD | CAT.PUSHBOX | CAT.ITEM;
+      body.collisionFilter.mask = CAT.WORLD | CAT.PUSHBOX;
       P.hangCD = 0.3; P.lastVy = 0;
       P.grounded = true; P.wasGrounded = true;
     }
@@ -1172,7 +1204,6 @@ class GameScene extends Phaser.Scene {
           dead = true;
           c.takeDamage(1, Math.sign(b.vx));
           this.impactSpark(b.x, b.y);
-          if (c.boss) UI.showBossBar(c.name ?? this.ch.bossName, Math.max(0, c.hp / c.maxHp));
         }
       }
       // siper / zemin
@@ -1301,6 +1332,7 @@ class GameScene extends Phaser.Scene {
     if (this.dead) return;
     this.dead = true;
     SFAudio.stopMusicBed();
+    SFMusic.stop(0.6);
     SFAudio.playDeathChord();
     this.rig.action = null;
     this.rig.setVisible(true);
@@ -1324,6 +1356,13 @@ class GameScene extends Phaser.Scene {
 
     const mt = Missions.findInteractable(this, px, py);
     if (mt) return mt;
+    const pt = Puzzles.findInteractable(this, px, py);
+    if (pt) return pt;
+    /* basamaklı merdivenin dibi */
+    for (const s of (this.stairs ?? [])) {
+      const feet = py + P.hStand / 2;
+      if (Math.abs(px - s.x0) < 34 && Math.abs(feet - s.y0) < 10) return { type: 'stair', obj: s, label: 'MERDİVENİ ÇIK', x: s.x0 + s.dir * 30, y: s.y0 - 96 };
+    }
     if (this.scarfItem && Math.abs(this.scarfItem.x - px) < 50) {
       return { type: 'scarf', obj: this.scarfItem, label: 'ATKIYI AL', x: this.scarfItem.x, y: this.scarfItem.y - 26 };
     }
@@ -1353,6 +1392,18 @@ class GameScene extends Phaser.Scene {
       if (Math.abs(c.x - px) < 70 && Math.abs(c.groundY - (py + P.hStand / 2)) < 80) {
         if (this.inv.crowbar) return { type: 'crate', obj: c, label: 'LEVYEYLE AÇ', x: c.x, y: c.y - c.h / 2 - 14 };
         return { type: 'crate-locked', obj: c, label: 'ÇİVİLİ — LEVYE GEREK', x: c.x, y: c.y - c.h / 2 - 14 };
+      }
+    }
+    // 3b) saklama yerleri: çekmece, dolap, kovuk, torpido...
+    for (const c of this.containers) {
+      if (c.opened) continue;
+      const feet = py + P.hStand / 2;
+      if (Math.abs(c.x - px) < Math.max(46, c.w / 2 + 22) && c.groundY - feet > -30 && c.groundY - feet < 60) {
+        if (c.needsCrowbar) {
+          if (this.inv.crowbar) return { type: 'crate', obj: c, label: 'LEVYEYLE ZORLA', x: c.x, y: c.y - c.h / 2 - 12 };
+          return { type: 'crate-locked', obj: c, label: 'SIKIŞMIŞ — LEVYE GEREK', x: c.x, y: c.y - c.h / 2 - 12 };
+        }
+        return { type: 'container', obj: c, label: c.label, x: c.x, y: Math.min(c.y - 18, c.groundY - c.h - 10) };
       }
     }
     // 4) kollar
@@ -1390,6 +1441,8 @@ class GameScene extends Phaser.Scene {
     const S = this.state;
     if (this.rig.actionActive) return;
     if (target.type.startsWith('m-')) { Missions.interact(this, target); return; }
+    if (target.type === 'p-act') { Puzzles.interact(this, target); return; }
+    if (target.type === 'stair') { this.enterStair(target.obj, 0, target.obj.dir); return; }
     switch (target.type) {
       case 'scarf': {
         const sf = target.obj;
@@ -1418,6 +1471,17 @@ class GameScene extends Phaser.Scene {
             it.pickupToHand(this.rig.joints.handR?.x ?? it.x, this.rig.joints.handR?.y ?? it.y);
             this.collectItem(it.kind, it);
           },
+          onDone: () => { P.mode = 'idle'; },
+        });
+        break;
+      }
+      case 'container': {
+        const c = target.obj;
+        P.mode = 'action';
+        const low = c.def.reach === 'low';
+        this.rig.startAction(low ? 'pickup' : 'insert', {
+          targetX: c.x, targetY: low ? c.groundY - Math.min(c.h, 30) : c.y,
+          onPhase: (ph) => { if (ph === 'grab' || ph === 'inserted') c.open(); },
           onDone: () => { P.mode = 'idle'; },
         });
         break;
@@ -1494,7 +1558,7 @@ class GameScene extends Phaser.Scene {
         break;
       }
       case 'crate-locked': SFAudio.thud(0.2); UI.hint('Levye gerekli.', 1500, '✊'); break;
-      case 'door-locked': SFAudio.thud(0.25); UI.hint('Anahtar gerekli. Kutulara bak.', 1600, '⚿'); break;
+      case 'door-locked': SFAudio.thud(0.25); UI.hint('Anahtar gerekli. Çekmecelere, dolaplara bak.', 1800, '⚿'); break;
       case 'generator-locked': SFAudio.thud(0.2); UI.hint('Pil gerekli.', 1600, '⚡'); break;
       case 'drivecar-locked': SFAudio.thud(0.25); UI.hint('Kontak anahtarı devriyedeki askerde. Arkasından eğilerek yaklaş.', 2600, '⚿'); break;
     }
@@ -1620,6 +1684,7 @@ class GameScene extends Phaser.Scene {
     const S = this.state;
 
     for (const it of this.physItems) it.update(dt);
+    for (const c of this.containers) c.update(dt);
     for (const pb of this.pushboxes) pb.update(time);
     for (const d of this.doors) { if (d.locked && d.needsKey) d.draw(); }
     for (const lv of this.levers) { if (!lv.pulled) lv.draw(); }
@@ -1656,6 +1721,8 @@ class GameScene extends Phaser.Scene {
 
     /* ---- görevler (set-piece, yangın, su, dev, bomba, öğretici) ---- */
     Missions.update(this, dt);
+    Puzzles.update(this, dt);
+    Buildings.update(this, dt);
     if (this.dead) return;
     this.mis?.vehicle?.update(dt);
 
@@ -1704,7 +1771,7 @@ class GameScene extends Phaser.Scene {
         UI.hint(IS_TOUCH ? 'Pil bitti. Karaktere dokun: pil değiştir.' : 'Pil bitti. [E] pil değiştir.', 2200, '✦');
         SFAudio.dryFire();
       } else {
-        UI.hint('Pil yok. Kutularda pil ara.', 2200, '✦');
+        UI.hint('Pil yok. Alet çantalarına, dolaplara bak.', 2200, '✦');
         SFAudio.dryFire();
       }
     }
@@ -1761,10 +1828,17 @@ class GameScene extends Phaser.Scene {
     const feet = MatterLib.Query.region(bodies, {
       min: { x: body.position.x - 8, y: body.position.y + h / 2 - 2 },
       max: { x: body.position.x + 8, y: body.position.y + h / 2 + 6 },
-    }).filter(b => b !== body && !b.isSensor && (b.isStatic || b.sfPush || b.sfItem));
+    }).filter(b => b !== body && !b.isSensor && (b.isStatic || b.sfPush));
     P.wasGrounded = P.grounded;
     P.grounded = feet.length > 0 && Math.abs(body.velocity.y) < 6;
     if (P.grounded) P.coyote = 0.1; else P.coyote -= dt;
+    /* UÇMA KORUMASI — oyuncu yalnız kendi zıplamasıyla (veya sudan çıkış / kenardan
+       geri sıçrayış) hızla yükselebilir. Gövde bir kutu/kapak/çöken parça arasında
+       sıkışıp Matter tarafından yukarı fırlatılırsa hız kesilir. */
+    if (P.grounded && body.velocity.y > -1) P.launchOK = false;
+    if (!P.launchOK && !P.grounded && !P.hang && !P.mantle && !P.climbing && !P.swimming && body.velocity.y < -6.5) {
+      MatterLib.Body.setVelocity(body, { x: clamp(body.velocity.x, -4, 4), y: -1 });
+    }
 
     if (P.grounded && !P.wasGrounded && !P.inWater && !P.mantle && !P.hang) {
       const impact = clamp(P.lastVy / 14, 0, 1);
@@ -1808,7 +1882,7 @@ class GameScene extends Phaser.Scene {
     if (P.grounded) P.jumpedAt = false;
     P.groundMat = this.materialAt(body.position.x, body.position.y + h / 2 + 6);
 
-    /* ---- merdiven ---- */
+    /* ---- el merdiveni ---- */
     let onLadder = null;
     for (const lad of this.ladders) {
       if (!lad.climbable) continue;
@@ -1816,31 +1890,51 @@ class GameScene extends Phaser.Scene {
         onLadder = lad;
       }
     }
-    if (!P.climbing && onLadder && (Input.jump || Input.up) && body.position.y - 10 > onLadder.topY) {
-      P.climbing = true; P.ladder = onLadder;
+    if (!P.climbing && !P.stair && onLadder && (Input.jump || Input.up) && body.position.y + h / 2 - 4 > onLadder.topY) {
+      P.climbing = true; P.ladder = onLadder; P.climbVy = 0;
       Input.jumpHit = false;
+      this.setCrouch(false);
       MatterLib.Body.setVelocity(body, { x: 0, y: 0 });
+    }
+    /* tepeden inme: merdivenin başında aşağı */
+    if (!P.climbing && !P.stair && !P.mantle && P.grounded && (Input.crouch || (Input.crouchPulse ?? 0) > 0)) {
+      for (const lad of this.ladders) {
+        if (!lad.climbable || Math.abs(body.position.x - lad.x) > 34 || Math.abs(body.position.y + h / 2 - lad.topY) > 10) continue;
+        this.setCrouch(false);
+        P.climbing = true; P.ladder = lad; P.climbVy = 0; Input.crouchPulse = 0;
+        body.collisionFilter.mask = 0;
+        MatterLib.Body.setPosition(body, { x: lad.x, y: lad.topY + P.hStand / 2 + 8 });
+        MatterLib.Body.setVelocity(body, { x: 0, y: 0 });
+        P.ladderDown = 0.35;
+        break;
+      }
     }
     if (P.climbing) {
       const lad = P.ladder;
-      if (!lad || !onLadder) { P.climbing = false; }
+      if (P.ladderDown > 0) { P.ladderDown -= dt; if (P.ladderDown <= 0) body.collisionFilter.mask = CAT.WORLD | CAT.PUSHBOX; }
+      if (!lad || (!onLadder && !(P.ladderDown > 0))) { P.climbing = false; body.collisionFilter.mask = CAT.WORLD | CAT.PUSHBOX; }
       else {
-        const vy = ((Input.jump || Input.up) ? -150 : 0) + (Input.crouch ? 150 : 0);
+        const vy = ((Input.jump || Input.up) ? -118 : 0) + ((Input.crouch || (Input.crouchPulse ?? 0) > 0) ? 132 : 0);
+        P.climbVy = vy;
         MatterLib.Body.setVelocity(body, { x: 0, y: 0 });
         MatterLib.Body.setPosition(body, {
           x: lerp(body.position.x, lad.x, 0.3),
-          y: body.position.y + vy * dt,
+          y: Math.min(lad.bottomY - P.hStand / 2, body.position.y + vy * dt),
         });
-        // tepeye varış
-        if (body.position.y + h / 2 <= lad.topY + 6 && (Input.jump || Input.up)) {
-          MatterLib.Body.setPosition(body, { x: lad.x + 26, y: lad.topY - h / 2 - 4 });
-          P.climbing = false;
+        /* tepeye varış: kollar kenarı kavrar, gövde yukarı çekilir (kenara çıkış animasyonu) */
+        if (vy < 0 && body.position.y <= lad.topY + 30) {
+          const exitDir = this.surfaceNear(lad.x + 32, lad.topY) ? 1 : this.surfaceNear(lad.x - 32, lad.topY) ? -1 : 1;
+          P.climbing = false; P.climbVy = 0;
+          P.mantle = { x: lad.x + exitDir * 14, y: lad.topY, side: -exitDir, p: 0.12, sx: body.position.x, sy: body.position.y };
+          body.collisionFilter.mask = 0;
+          SFAudio.itemHit('wood', 0.25);
         }
         // tabana iniş
         if (body.position.y + h / 2 >= lad.bottomY - 2 && Input.crouch) P.climbing = false;
-        if ((Input.left || Input.right) && Input.jumpHit) { P.climbing = false; Input.jumpHit = false; }
+        if ((Input.left || Input.right) && Input.jumpHit) { P.climbing = false; Input.jumpHit = false; body.collisionFilter.mask = CAT.WORLD | CAT.PUSHBOX; }
+        if (P.climbing && vy !== 0 && (!P._rungT || this.time.now - P._rungT > 260)) { P._rungT = this.time.now; SFAudio.itemHit('wood', 0.12); }
       }
-    }
+    } else P.climbVy = 0;
 
     /* ---- hareket ---- */
     let dir = (Input.left ? -1 : 0) + (Input.right ? 1 : 0);
@@ -1858,11 +1952,23 @@ class GameScene extends Phaser.Scene {
     }
     if (this.panelOpen) dir = 0;
 
+    /* ---- basamaklı merdiven ---- */
+    if (!P.stair && !P.climbing && !P.hang && !P.mantle && !this.rig.actionActive) {
+      const st = Buildings.stairAt(this, P, dir, h);
+      if (st && (st.k === 1 || Input.up || Input.jump || Input.jumpHit)) this.enterStair(st.s, st.k);
+    }
+    if (P.stair) {
+      if (dir === 0 && P.stair.auto) dir = P.stair.auto;
+      if (dir !== 0 && dir !== P.stair.auto) P.stair.auto = 0;
+      Buildings.updateStair(this, P, dir, dt);
+      Input.jumpHit = false;
+    }
+
     /* ---- KENAR: tutunma / yukarı çıkma / refleks yakalama ---- */
     if (P.hangCD > 0) P.hangCD -= dt;
     if (P.mantle) this.updateMantle(dt);
     else if (P.hang) this.updateHang(dt, dir);
-    else if (!P.grounded && !P.climbing && !P.swimming && !P.inVehicle) this.tryGrabLedge(dt);
+    else if (!P.grounded && !P.climbing && !P.swimming && !P.inVehicle && !P.stair) this.tryGrabLedge(dt);
     const onLedge = !!(P.hang || P.mantle);
 
     if (dir !== 0 && !this.rig.actionActive && !onLedge) P.facing = dir;
@@ -1896,7 +2002,7 @@ class GameScene extends Phaser.Scene {
 
     const actionLock = this.rig.actionActive || P.mode === 'pry' || this.panelOpen || P.rollT > 0;
 
-    if (!P.climbing && !onLedge) {
+    if (!P.climbing && !onLedge && !P.stair) {
       if (P.swimming) {
         /* yüzme fizikleri */
         const M = MatterLib;
@@ -1910,6 +2016,7 @@ class GameScene extends Phaser.Scene {
         // su yüzeyinden çıkış zıplaması
         if (Input.jumpHit && body.position.y - h / 2 < inWaterZone.surfaceY + 14) {
           vy = -9.4;
+          P.launchOK = true;
           inWaterZone.splash(body.position.x, 0.8);
         }
         M.Body.setVelocity(body, { x: clamp(vx, -3.2, 3.2), y: clamp(vy, -4.5, 5) });
@@ -1985,6 +2092,7 @@ class GameScene extends Phaser.Scene {
           P.jumpNow = false;
           const runBoost = Math.abs(body.velocity.x) * 0.22;
           MatterLib.Body.setVelocity(body, { x: body.velocity.x, y: -11.8 - runBoost });
+          P.launchOK = true;
           P.coyote = 0;
           P.jumpedAt = true; P.slip = null;
           P.jumpCutDone = false;
@@ -2022,7 +2130,7 @@ class GameScene extends Phaser.Scene {
     if ((Input.grab || Input.act) && P.grounded && !P.crouching && !P.swimming && !this.rig.actionActive) {
       for (const pb of this.pushboxes) {
         const bdx = pb.body.position.x - body.position.x;
-        if (Math.abs(bdx) < pb.w / 2 + 30 && Math.abs(pb.body.position.y - body.position.y) < pb.h) { P.grabbing = pb; P.grabSide = Math.sign(bdx); break; }
+        if (Math.abs(bdx) < pb.w / 2 + 30 && Math.abs(pb.body.position.y - body.position.y) < pb.h / 2 + 8) { P.grabbing = pb; P.grabSide = Math.sign(bdx); break; }
       }
       if (P.grabbing) {
         const vx = clamp(body.velocity.x, -1.5, 1.5);
@@ -2099,16 +2207,6 @@ class GameScene extends Phaser.Scene {
     this.updateBullets(dt);
     this.updatePlayerBullets(dt);
 
-    /* ---- boss kapısı ---- */
-    if (this.bossGate && !this.bossGate.open) {
-      const gateLeft = [...this.soldiers.filter(s => s.gate && !s.dead), ...this.creatures.filter(c => c.gate && !c.dead)];
-      if (gateLeft.length === 0) {
-        this.openGrate(this.bossGate, 'Yol açıldı.');
-        UI.hideBossBar();
-        SFAudio.playHopeMotif();
-      }
-    }
-
     /* ---- atkı ---- */
     if (this.scarfItem) this.scarfItem.g.setAlpha(0.85 + Math.sin(time * 0.003) * 0.15);
 
@@ -2133,6 +2231,7 @@ class GameScene extends Phaser.Scene {
     /* ---- rig ---- */
     let mode = 'idle';
     if (this.rig.actionActive) mode = this.rig.mode; // action çizimi draw() içinde önceliğe sahip
+    else if (P.stair) mode = 'stairs';
     else if (P.mantle) mode = 'mantle';
     else if (P.hang) mode = 'hang';
     else if (P.rollT > 0) mode = 'roll';
@@ -2151,14 +2250,16 @@ class GameScene extends Phaser.Scene {
     this.rig.update(dt, {
       x: body.position.x,
       y: P.swimming ? body.position.y : bodyBottom - this.rig.A.standH,
-      vx: body.velocity.x * 60, vy: body.velocity.y * 60,
-      grounded: P.grounded || P.coyote > 0,
+      vx: P.stair ? (P.stair.v ?? 0) * P.stair.s.dir : body.velocity.x * 60,
+      vy: P.climbing ? P.climbVy : body.velocity.y * 60,
+      grounded: P.grounded || P.coyote > 0 || !!P.stair,
       facing: P.facing, crouch: false,
       mode, groundY: bodyBottom,
       ledge: LG ? { x: LG.x, y: LG.y, side: LG.side } : null,
       mantleP: P.mantle ? P.mantle.p : 0,
       rollP: P.rollT > 0 ? 1 - P.rollT / 0.52 : 0,
       edgeX: P.teeter ? P.teeterX : null,
+      stair: P.stair ? P.stair.s : null,
     });
 
     this.updateFlashBeam();
@@ -2166,16 +2267,15 @@ class GameScene extends Phaser.Scene {
     /* ---- kamera ---- */
     const cam = this.cameras.main;
     const lookAhead = P.facing * 90;
-    const targetX = body.position.x + lookAhead - cam.width / 2;
-    const targetY = body.position.y - cam.height * 0.58;
-    cam.scrollX = lerp(cam.scrollX, targetX, 1 - Math.exp(-dt * 3.2));
-    cam.scrollY = lerp(cam.scrollY, clamp(targetY, -200, WORLD_H - cam.height + 100), 1 - Math.exp(-dt * 2.6));
+    const tgt = Buildings.clampCamera(this, body.position.x + lookAhead - cam.width / 2, clamp(body.position.y - cam.height * 0.58, -200, WORLD_H - cam.height + 100));
+    cam.scrollX = lerp(cam.scrollX, tgt.x, 1 - Math.exp(-dt * 3.2));
+    cam.scrollY = lerp(cam.scrollY, tgt.y, 1 - Math.exp(-dt * 2.6));
   }
 
   updateEnemies(dt) {
     const P = this.player;
     const playerProxy = {
-      x: P.body.position.x, y: P.body.position.y,
+      x: P.body.position.x, y: P.body.position.y, vx: P.body.velocity.x,
       crouching: P.crouching, hidden: P.hidden || P.inCar,
       noisy: P.grounded && Math.abs(P.body.velocity.x) > 3.1 && !P.crouching,   // koşu adımları duyulur
     };
@@ -2188,14 +2288,37 @@ class GameScene extends Phaser.Scene {
     }
     for (const c of this.creatures) {
       c.update(dt, playerProxy);
-      if (c.state === 'chase' || c.state === 'strike' || c.state === 'charge') tension = Math.max(tension, 1);
-      else if (c.state === 'alert' || c.state === 'stare') tension = Math.max(tension, 0.7);
+      if (c.dead) continue;
+      if (['chase', 'strike', 'charge', 'lunge', 'hunt', 'smash', 'recover'].includes(c.state)) tension = Math.max(tension, 1);
+      else if (['alert', 'stare', 'rear', 'stun'].includes(c.state)) tension = Math.max(tension, 0.7);
     }
     const tens = this.cineLock ? 0 : tension;
     SFAudio.setTension(tens);
-    // tehlike anında melodik underscore'u kısmen geri çek + sürükleyici aksiyon katmanını yükselt
-    SFAudio.setMusicIntensity((0.42 - (this.baseDark ?? 0) * 0.1) * (1 - tens * 0.5));
-    SFAudio.setActionLevel(tens);
+    this.musicTick(tens);
+  }
+
+  /* sahnenin gidişatı → müzik: araç, bomba, kaçış (yangın / su / dev / kovalamaca /
+     çöken köprü), aksiyon (seni kovalayan / ateş eden), gizlilik (şüphelenen),
+     bulmaca başında, bina içinde, yoksa perdenin keşif teması */
+  musicTick(tens) {
+    if (this.cineLock || this.dead || this.finished) return;
+    const M = this.mis ?? {}, P = this.player;
+    const now = this.time.now / 1000;
+    let st = 'explore';
+    const px = P.body.position.x;
+    const fireOn = M.fire?.active && !M.fire.over && Math.abs((M.fire.cells ?? []).reduce((m, c) => c.st === 1 ? Math.max(m, c.x) : m, -1e9) - px) < 900;
+    const floodOn = M.flood?.burst && !M.flood.safe;
+    const chaseOn = (M.chases ?? []).some(c => c.fired && !c.done);
+    const collapseOn = (M.collapses ?? []).some(c => c.fired && now - (c._firedAt ?? (c._firedAt = now)) < 4);
+    if (P.inVehicle || P.inCar) st = 'vehicle';
+    else if (M.bomb && !M.bomb.done && !M.bomb.exploded) st = 'bomb';
+    else if (fireOn || floodOn || M.colossus?.active || chaseOn || collapseOn) st = 'escape';
+    else if (tens >= 0.85) st = 'action';
+    else if (tens >= 0.45) st = 'stealth';
+    else if ((this.pz ?? []).some(p => !(p.raised || p.done || p.solved) && Math.abs(px - (p.hintX ?? p.x0 ?? 0) - 250) < 420)) st = 'puzzle';
+    else if (this.inBld || this.ch.interior) st = 'interior';
+    SFMusic.setIntensity(tens);
+    SFMusic.setScene(st, this.ch.biome, now);
   }
 
   completeChapter() {
@@ -2209,10 +2332,10 @@ class GameScene extends Phaser.Scene {
     };
     SaveGame.unlock(this.levelId + 1);
     SaveGame.setCurrent(this.levelId + 1, nextState);
+    SFMusic.stop(1.8);
     SFAudio.playHopeMotif();
     SFAudio.setTension(0);
     UI.showHUD(false);
-    UI.hideBossBar();
     UI.fadeOut(2000);
     this.time.delayedCall(2300, () => {
       if (this.levelId + 1 <= LEVEL_COUNT) {
@@ -2228,9 +2351,9 @@ class GameScene extends Phaser.Scene {
      ============================================================ */
   startEndCine(kind, opts = {}) {
     this.cineLock = true;
+    SFMusic.stop(2.5);
     document.body.classList.add('cine');
     UI.showHUD(false);
-    UI.hideBossBar();
     UI.showSkip(true);
     const P = this.player;
     MatterLib.Body.setVelocity(P.body, { x: 0, y: 0 });
@@ -2404,7 +2527,6 @@ class GameScene extends Phaser.Scene {
       this.time.delayedCall(1200, () => p.destroy());
     };
     this.introTimeline = [
-      { t: 0.8, fn: () => UI.subtitle('Maria ile ormanda yürüyorduk.', 2800) },
       /* ilk sarsıntı — ikisi de durur, etrafa bakar */
       { t: 4.6, fn: () => {
           SFAudio.rumble?.(1.4, 0.45);
@@ -2412,7 +2534,6 @@ class GameScene extends Phaser.Scene {
           A.kai.vx = 0; A.maria.vx = 0;
           A.maria.facing = -1; A.maria.pose = 'scared'; A.kai.pose = 'scared';
       }},
-      { t: 5.4, fn: () => UI.subtitle('Sonra yer sarsıldı.', 2400) },
       /* asıl deprem — çatlak açılır, toprak kütlesi Maria'yla birlikte çöker */
       { t: 6.8, fn: () => {
           SFAudio.rumble?.(3.2, 0.95);
@@ -2437,7 +2558,6 @@ class GameScene extends Phaser.Scene {
           }).setDepth(69);
           this.tweens.add({ targets: this.slab, y: gY + 620, angle: 24, duration: 1300, ease: 'Quad.easeIn' });
           A.maria.pose = null; A.maria.falling = true; A.maria.vy = -40; A.maria.facing = 1;
-          UI.subtitle('Maria: "KAİ!"', 1600);
       }},
       { t: 9.3, fn: () => { A.maria.visible = false; } },
       { t: 9.4, fn: () => { A.kai.vx = 230; A.kai.facing = 1; A.kai.stopAt = PIT0 - 26; } },
@@ -2450,7 +2570,6 @@ class GameScene extends Phaser.Scene {
           this.fogOverlay.fillColor = 0x010103;
           this.tweens.add({ targets: this.fogOverlay, fillAlpha: 1, duration: 700 });
       }},
-      { t: 14.4, fn: () => UI.subtitle('Peşinden atladım.', 2400) },
       { t: 17.2, fn: () => UI.showChapterCard({ id: 0, name: 'YARIK', sub: 'yarığın dibi' }) },
       { t: 20.2, fn: () => this.endIntro() },
     ];
@@ -2547,6 +2666,8 @@ const UI = {
     $('m-options').onclick = () => { this.hide('menu'); this.show('options-panel'); };
     $('ch-back').onclick = () => { this.hide('chapters-panel'); this.show('menu'); };
     $('opt-back').onclick = () => { this.hide('options-panel'); this.show('menu'); };
+    $('m-privacy').onclick = () => { this.hide('menu'); this.show('privacy-panel'); };
+    $('privacy-back').onclick = () => { this.hide('privacy-panel'); this.show('menu'); };
 
     $('opt-vol').oninput = (e) => { SF_SETTINGS.vol = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); };
     $('opt-music').oninput = (e) => { SF_SETTINGS.music = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); };
@@ -2763,7 +2884,6 @@ const UI = {
   toMenu() {
     this.hide('pause-panel'); this.hide('death-panel'); this.hide('ending-panel');
     this.showHUD(false);
-    this.hideBossBar();
     this.showSkip(false);
     this.el('pause-btn').style.display = 'none';
     this.el('touch-layer').style.display = 'none';
@@ -2800,9 +2920,11 @@ const UI = {
         const lv = (act - 1) * 10 + i;
         const b = document.createElement('button');
         const mis = MISSIONS[lv];
-        b.className = 'lv-btn' + (lv > unlocked ? ' locked' : '') + (lv % 10 === 0 ? ' bosslv' : '') + (mis ? ' mislv' : '');
+        const bld = buildingFor(lv);
+        b.className = 'lv-btn' + (lv > unlocked ? ' locked' : '') + (mis ? ' mislv' : '') + (bld ? ' bldlv' : '');
         b.textContent = lv;
         if (mis) b.title = MISSION_TITLES[mis];
+        if (bld) b.title = bld.name;
         if (lv <= unlocked) b.onclick = () => { SFAudio.init(); SFAudio.resume(); this.hide('chapters-panel'); this.startGame(lv, SaveGame.load().state); };
         row.appendChild(b);
       }
@@ -3026,13 +3148,6 @@ const UI = {
     if (on && label) b.querySelector('.act-label').textContent = label;
   },
 
-  showBossBar(name, pct) {
-    const bar = this.el('boss-bar');
-    bar.style.display = 'block';
-    bar.querySelector('.boss-name').textContent = name ?? '???';
-    bar.querySelector('.boss-fill').style.width = (pct * 100) + '%';
-  },
-  hideBossBar() { this.el('boss-bar').style.display = 'none'; },
 
   _subTimer: null,
   subtitle(text, ms = 3000) {
@@ -3058,7 +3173,7 @@ const UI = {
 
   showChapterCard(ch) {
     const card = this.el('chapter-card');
-    card.querySelector('.num').textContent = ch.id === 0 ? '' : `BÖLÜM ${ch.id} / ${LEVEL_COUNT}` + (ch.bossName ? ' — ' + ch.bossName : '');
+    card.querySelector('.num').textContent = ch.id === 0 ? '' : `BÖLÜM ${ch.id} / ${LEVEL_COUNT}`;
     card.querySelector('.name').textContent = ch.name + (ch.sub ? ' — ' + ch.sub : '');
     card.classList.add('visible');
     setTimeout(() => card.classList.remove('visible'), 2600);
@@ -3107,6 +3222,33 @@ const UI = {
     f.classList.remove('clear');
   },
 };
+
+/* ---------------- Android geri tuşu ----------------
+   true: oyun işledi (duraklat / panel kapat), false: uygulamadan çık */
+window.SFBack = () => {
+  const vis = (id) => UI.el(id)?.classList.contains('visible');
+  for (const id of ['chapters-panel', 'options-panel', 'privacy-panel']) {
+    if (vis(id)) { UI.hide(id); UI.show('menu'); return true; }
+  }
+  if (vis('keypad-panel')) { UI.el('kp-close').click(); return true; }
+  if (vis('bomb-panel')) { UI.el('bomb-close').click(); return true; }
+  if (vis('pause-panel')) { UI.resume(); return true; }
+  if (vis('death-panel') || vis('ending-panel')) { UI.toMenu(); return true; }
+  if (vis('menu')) return false;
+  if (UI.game?.scene.isActive('game')) { UI.pause(); return true; }
+  UI.toMenu();
+  return true;
+};
+
+/* uygulama arka plana atılınca otomatik duraklat */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (UI.game?.scene.isActive('game')) UI.pause();
+    try { SFAudio.ctx?.suspend(); } catch (e) {}   // arka planda ses çalmasın
+  } else {
+    try { SFAudio.ctx?.resume(); } catch (e) {}
+  }
+});
 
 /* ---------------- boot ---------------- */
 window.addEventListener('DOMContentLoaded', () => UI.init());

@@ -358,6 +358,231 @@ class Crate {
   }
 }
 
+/* ---------------- SAKLAMA YERLERİ ----------------
+   Her şey kutudan çıkmaz: komodin çekmecesi, dolap, gardırop, duvardaki ilk
+   yardım dolabı, işçi dolabı, alet çantası, buzdolabı, terk edilmiş sırt
+   çantası, ağaç kovuğu, araç torpidosu, posta kutusu, çöp kutusu, sandık,
+   cephane kutusu, havalandırma ızgarası. Bandaj yalnız "tıbbi" saklama
+   yerlerinden çıkar (çekmece, dolap, ilk yardım, çanta, sandık...).
+   İçindekiler doğrudan envantere geçer; boş olanlar da vardır. */
+const CONTAINER_DEFS = {
+  drawer:   { label: 'ÇEKMECEYİ AÇ',       w: 56, h: 52, med: true,  reach: 'low' },
+  cabinet:  { label: 'DOLABI AÇ',          w: 50, h: 112, med: true, reach: 'mid' },
+  wardrobe: { label: 'GARDIROBU AÇ',       w: 72, h: 132, med: true, reach: 'mid' },
+  medkit:   { label: 'İLK YARDIM DOLABI',  w: 30, h: 26, med: true,  reach: 'mid', mountY: 96 },
+  locker:   { label: 'DOLABI AÇ',          w: 34, h: 122, med: true, reach: 'mid' },
+  toolbox:  { label: 'ALET ÇANTASINI AÇ',  w: 40, h: 20, med: false, reach: 'low' },
+  fridge:   { label: 'BUZDOLABINI AÇ',     w: 46, h: 104, med: false, reach: 'mid' },
+  backpack: { label: 'ÇANTAYI KARIŞTIR',   w: 26, h: 22, med: true,  reach: 'low' },
+  hollow:   { label: 'KOVUĞA BAK',         w: 34, h: 170, med: false, reach: 'mid', mountY: 64 },
+  glovebox: { label: 'TORPİDOYU AÇ',       w: 18, h: 10, med: false, reach: 'mid', mountY: 34 },
+  mailbox:  { label: 'POSTA KUTUSUNA BAK', w: 24, h: 92, med: false, reach: 'mid', mountY: 80 },
+  trash:    { label: 'ÇÖPÜ KARIŞTIR',      w: 34, h: 46, med: false, reach: 'low' },
+  chest:    { label: 'SANDIĞI AÇ',         w: 58, h: 36, med: true,  reach: 'low' },
+  ammo:     { label: 'CEPHANE KUTUSUNU AÇ', w: 46, h: 24, med: false, reach: 'low' },
+  vent:     { label: 'IZGARAYI SÖK',       w: 32, h: 22, med: false, reach: 'low', mountY: 30 },
+};
+const ITEM_NAMES = {
+  bandage: 'BANDAJ', battery: 'PİL', mag: 'ŞARJÖR', key: 'ANAHTAR', fuse: 'SİGORTA', crowbar: 'LEVYE',
+  note: 'NOT', cutters: 'PENSE', manual: 'TALİMAT', pistol: 'TABANCA', valve: 'VANA KOLU',
+};
+
+class Container {
+  /** cfg: { kind, x, groundY, contents, needsCrowbar } */
+  constructor(scene, cfg) {
+    this.scene = scene;
+    this.kind = cfg.kind;
+    this.def = CONTAINER_DEFS[cfg.kind] ?? CONTAINER_DEFS.drawer;
+    this.x = cfg.x; this.groundY = cfg.groundY;
+    this.w = this.def.w; this.h = this.def.h;
+    /* etkileşim noktası: duvara asılılarda montaj yüksekliği, diğerlerinde gövde ortası */
+    this.y = cfg.groundY - (this.def.mountY ?? this.h / 2);
+    this.contents = cfg.contents ?? [];
+    this.needsCrowbar = !!cfg.needsCrowbar;
+    this.opened = false;
+    this.openAmt = 0;
+    this.pryProgress = 0;
+    this.gfx = scene.add.graphics().setDepth(cfg.depth ?? 64);
+    this.glow = scene.add.graphics().setDepth(63);
+    /* açık havadaki ilk yardım dolabı bir direğe asılı durur */
+    this.post = this.kind === 'medkit' && !scene.ch?.interior && !(scene.ch?.buildings ?? []).some(b => this.x > b.x0 && this.x < b.x1);
+    this.t = Math.random() * 6;
+    this.draw();
+  }
+
+  get label() { return this.needsCrowbar ? 'LEVYEYLE ZORLA' : this.def.label; }
+
+  update(dt) {
+    if (this.opened) return;
+    this.t += dt;
+    /* belli belirsiz parıltı — keşfedilebilir olduğunu söyler, bağırmaz */
+    const g = this.glow; g.clear();
+    g.fillStyle(0xd8d4c8, 0.035 + Math.abs(Math.sin(this.t * 1.1)) * 0.045);
+    g.fillCircle(this.x, this.y, 20);
+  }
+
+  pryOnce() {
+    if (this.opened) return false;
+    this.pryProgress++;
+    SFAudio.pry(this.pryProgress / 2);
+    this.scene.cameras.main.shake(100, 0.003);
+    if (this.pryProgress >= 2) { this.open(); return true; }
+    return false;
+  }
+
+  open() {
+    if (this.opened) return;
+    this.opened = true;
+    this.glow.clear();
+    const sc = this.scene;
+    const metal = ['locker', 'toolbox', 'fridge', 'mailbox', 'ammo', 'vent', 'medkit', 'glovebox', 'trash'].includes(this.kind);
+    SFAudio.itemHit(metal ? 'metal' : 'wood', 0.35);
+    if (this.kind === 'drawer' || this.kind === 'cabinet' || this.kind === 'wardrobe') SFAudio.doorCreak();
+    sc.tweens.add({ targets: this, openAmt: 1, duration: 420, ease: 'Quad.easeOut', onUpdate: () => this.draw() });
+    sc.time.delayedCall(260, () => {
+      if (!this.contents.length) { this._float('BOŞ', 0x8e8a82); return; }
+      this.contents.forEach((raw, i) => {
+        const [k, ...meta] = raw.split(':');
+        sc.time.delayedCall(i * 220, () => {
+          sc.collectItem(k, { meta: meta.join(':') });
+          SFAudio.pickup();
+          this._float('+ ' + (ITEM_NAMES[k] ?? k.toUpperCase()), 0xe2ded6, i);
+        });
+      });
+    });
+    /* bir yerde hep aynı şey bulunmasın: açılan saklama yeri ses yapar, yakındakiler duyar */
+    if (metal) sc.makeNoise(this.x, this.y, 160, 0.25);
+  }
+
+  _float(text, color, i = 0) {
+    const sc = this.scene;
+    const t = sc.add.text(this.x, this.y - this.h * 0.2 - 18 - i * 16, text, {
+      fontFamily: 'Inter, sans-serif', fontSize: '12px', fontStyle: '500',
+      color: '#' + color.toString(16).padStart(6, '0'), stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(870).setAlpha(0);
+    sc.tweens.add({ targets: t, alpha: 1, y: t.y - 10, duration: 260, ease: 'Quad.easeOut' });
+    sc.tweens.add({ targets: t, alpha: 0, y: t.y - 30, delay: 1300, duration: 600, onComplete: () => t.destroy() });
+  }
+
+  draw() {
+    const g = this.gfx; g.clear();
+    const c = 0x0c0c11, edge = 0x1d1e26, x = this.x, gy = this.groundY, o = this.openAmt;
+    g.fillStyle(c, 1);
+    g.lineStyle(1.2, edge, 0.9);
+    switch (this.kind) {
+      case 'drawer': {                         // üç çekmeceli komodin, üstünde lamba/çerçeve
+        const w = 56, h = 52, x0 = x - w / 2, y0 = gy - h;
+        g.fillRect(x0, y0, w, h); g.fillRect(x0 + 3, gy - 3, 6, 3); g.fillRect(x0 + w - 9, gy - 3, 6, 3);
+        for (let i = 0; i < 3; i++) {
+          const dy = y0 + 4 + i * 15;
+          const pull = i === 0 ? o * 14 : 0;
+          g.strokeRect(x0 + 4 + pull * 0.2, dy, w - 8, 12);
+          if (pull) { g.fillStyle(c, 1); g.fillRect(x0 + 4, dy, w - 8 + pull, 12); g.strokeRect(x0 + 4, dy, w - 8 + pull, 12); }
+          g.fillStyle(edge, 1); g.fillCircle(x + pull, dy + 6, 1.6); g.fillStyle(c, 1);
+        }
+        g.fillRect(x - 18, y0 - 14, 7, 14); g.fillEllipse(x - 14.5, y0 - 16, 14, 6);   // masa lambası
+        g.strokeRect(x + 8, y0 - 12, 12, 12);                                           // çerçeve
+        break;
+      }
+      case 'cabinet': case 'wardrobe': case 'locker': case 'fridge': {
+        const w = this.w, h = this.h, x0 = x - w / 2, y0 = gy - h;
+        g.fillRect(x0, y0, w, h);
+        const doors = this.kind === 'wardrobe' ? 2 : 1;
+        const dw = w / doors;
+        for (let i = 0; i < doors; i++) {
+          const dx0 = x0 + i * dw;
+          if (o > 0 && (i === doors - 1)) {
+            /* kapak açılır: perspektif daralan kanat */
+            const sw = dw * (1 - o * 0.75);
+            g.fillStyle(0x050507, 1); g.fillRect(dx0 + 2, y0 + 3, dw - 4, h - 6);
+            g.fillStyle(c, 1);
+            g.beginPath(); g.moveTo(dx0 + dw, y0 + 2); g.lineTo(dx0 + dw + sw * 0.9, y0 - 4); g.lineTo(dx0 + dw + sw * 0.9, gy + 2); g.lineTo(dx0 + dw, gy - 2); g.closePath(); g.fillPath();
+            g.strokePath();
+          } else {
+            g.strokeRect(dx0 + 3, y0 + 3, dw - 6, h - 6);
+            g.fillStyle(edge, 1); g.fillRect(dx0 + dw - 8, y0 + h * 0.45, 2, 10); g.fillStyle(c, 1);
+          }
+        }
+        if (this.kind === 'locker') { for (let k = 0; k < 4; k++) g.fillStyle(edge, 1).fillRect(x0 + 8, y0 + 10 + k * 4, w - 16, 1.5); g.fillStyle(c, 1); }
+        if (this.kind === 'fridge') { g.lineStyle(1.2, edge, 0.9); g.beginPath(); g.moveTo(x0 + 3, y0 + h * 0.36); g.lineTo(x0 + w - 3, y0 + h * 0.36); g.strokePath(); }
+        if (this.kind === 'wardrobe') g.fillRect(x0 - 3, y0 - 6, w + 6, 6);
+        break;
+      }
+      case 'medkit': {
+        const y = this.y;
+        if (this.post) { g.fillRect(x - 3, y, 6, gy - y); g.fillRect(x - 12, gy - 4, 24, 4); }
+        g.fillRect(x - 15, y - 13, 30, 26);
+        g.fillStyle(0x6e2b2b, 0.85);                 // soluk kızıl haç — dünyadaki seyrek renklerden
+        g.fillRect(x - 2.5, y - 8, 5, 16); g.fillRect(x - 8, y - 2.5, 16, 5);
+        if (o > 0) { g.fillStyle(c, 1); g.fillRect(x - 15 - o * 16, y - 13, o * 14, 26); g.fillStyle(0x050507, 1); g.fillRect(x - 13, y - 11, 26 * o, 22); }
+        break;
+      }
+      case 'toolbox': case 'ammo': case 'chest': {
+        const w = this.w, h = this.h, x0 = x - w / 2, y0 = gy - h;
+        g.fillRect(x0, y0 + 4, w, h - 4);
+        /* kapak: açıldıkça arkaya devrilir */
+        const lidA = o * 1.9;
+        g.beginPath();
+        g.moveTo(x0, y0 + 4); g.lineTo(x0 + w, y0 + 4);
+        g.lineTo(x0 + w - Math.sin(lidA) * 2, y0 + 4 - Math.cos(lidA) * 8 - Math.sin(lidA) * 2);
+        g.lineTo(x0 + Math.cos(lidA) * 0 , y0 + 4 - Math.cos(lidA) * 8 - Math.sin(lidA) * 14 * (this.kind === 'chest' ? 1 : 0.6));
+        g.closePath(); g.fillPath();
+        if (this.kind === 'toolbox') g.fillRect(x - 7, y0 - 3, 14, 3);
+        if (this.kind === 'ammo') { g.fillStyle(edge, 1); g.fillRect(x0 + 6, y0 + 10, w - 12, 2); }
+        if (this.kind === 'chest') { g.fillStyle(edge, 1); g.fillRect(x - 3, y0 + 8, 6, 7); g.fillRect(x0, y0 + 14, w, 2); }
+        break;
+      }
+      case 'backpack': {
+        const y0 = gy - 22;
+        g.fillRoundedRect(x - 12, y0, 24, 22, 6);
+        g.fillRoundedRect(x - 9, y0 + 9, 18, 10, 3);
+        g.lineStyle(2, c, 1); g.beginPath(); g.moveTo(x - 6, y0 + 2); g.lineTo(x - 2, y0 - 6); g.lineTo(x + 4, y0 + 1); g.strokePath();
+        if (o > 0) { g.fillStyle(0x050507, 1); g.fillEllipse(x, y0 + 3, 16 * o, 4); }
+        break;
+      }
+      case 'hollow': {                         // kuru gövde, ortasında kovuk
+        g.beginPath();
+        g.moveTo(x - 16, gy); qTo(g, x - 16, gy, x - 10, gy - 90, x - 6, gy - 170);
+        g.lineTo(x + 6, gy - 170); qTo(g, x + 6, gy - 170, x + 11, gy - 80, x + 18, gy);
+        g.closePath(); g.fillPath();
+        g.lineStyle(4, c, 1); g.beginPath(); g.moveTo(x - 4, gy - 140); qTo(g, x - 4, gy - 140, x - 36, gy - 170, x - 56, gy - 200); g.strokePath();
+        g.fillStyle(0x020203, 1); g.fillEllipse(x + 2, this.y, 13, 20);
+        if (!this.opened) { g.fillStyle(0x2a2a30, 0.8); g.fillEllipse(x + 3, this.y + 5, 6, 4); }
+        break;
+      }
+      case 'glovebox': {
+        g.fillStyle(edge, 1); g.fillRect(x - 9, this.y - 5, 18, 10);
+        if (o > 0) { g.fillStyle(0x050507, 1); g.fillRect(x - 8, this.y - 4, 16, 8); g.fillStyle(edge, 1); g.fillRect(x - 9, this.y + 5, 18, 3 * o); }
+        break;
+      }
+      case 'mailbox': {
+        g.fillRect(x - 2, gy - 72, 4, 72);
+        g.fillRoundedRect(x - 12, gy - 92, 24, 20, { tl: 9, tr: 9, bl: 0, br: 0 });
+        if (o > 0) { g.fillStyle(0x050507, 1); g.fillRect(x + 8, gy - 88, 4, 14); g.fillStyle(c, 1); g.fillRect(x + 12, gy - 90 + 6 * o, 3, 16); }
+        g.fillStyle(0x6e2b2b, 0.7); g.fillRect(x - 13, gy - 88, 2, 8 - o * 6);
+        break;
+      }
+      case 'trash': {
+        g.fillRect(x - 15, gy - 40, 30, 40);
+        g.fillRect(x - 17, gy - 46 - o * 6, 34, 6);
+        g.lineStyle(1, edge, 0.8);
+        for (let k = -1; k <= 1; k++) { g.beginPath(); g.moveTo(x + k * 8, gy - 36); g.lineTo(x + k * 8, gy - 4); g.strokePath(); }
+        break;
+      }
+      case 'vent': {
+        const y = this.y;
+        g.fillStyle(0x050507, 1); g.fillRect(x - 16, y - 11, 32, 22);
+        if (!this.opened) {
+          g.fillStyle(c, 1); g.fillRect(x - 16, y - 11, 32, 22);
+          g.lineStyle(1.2, edge, 0.9);
+          for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(x - 13, y - 7 + k * 5); g.lineTo(x + 13, y - 7 + k * 5); g.strokePath(); }
+        } else { g.fillStyle(c, 1); g.fillRect(x - 18, y + 14, 32, 4); }
+        break;
+      }
+    }
+  }
+}
+
 /* ---------------- İTİLEBİLİR SANDIK ---------------- */
 class PushBox {
   constructor(scene, cfg) {

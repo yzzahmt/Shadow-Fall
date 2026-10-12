@@ -112,7 +112,16 @@ class HumanRig {
     /* gerçek insan oranları — bacaklar pelvis yüksekliğine ulaşır,
        ayaklar gerçekten yere basar (eski rig'de bacaklar kısaydı) */
     const lurk = this.variant === 'lurker';
-    this.A = lurk ? {
+    this.A = this.variant === 'brute' ? {
+      /* koca: kısa kalın bacak, dizlere inen ağır kollar, devasa omuz, küçük kafa */
+      legUp: 21 * s, legLo: 20 * s,
+      armUp: 20 * s, armLo: 20 * s,
+      torso: 31 * s,
+      headR: 4.6 * s,
+      hipW: 8.5 * s, shW: 14 * s,
+      waist: 0.92,
+      standH: 40 * s,
+    } : lurk ? {
       /* lurker: insan değil — fazla uzun bacak/kol, dar gövde, küçük kafa */
       legUp: 31 * s, legLo: 31 * s,
       armUp: 23 * s, armLo: 23 * s,
@@ -316,7 +325,9 @@ class HumanRig {
     if (this.mode === 'swim') {
       this.phase += dt * (2.2 + speed / 60);
     } else if (this.mode === 'climb') {
-      this.phase += Math.abs(this.vy) * 0.018 * dt * 60 / 16.6;
+      /* faz tırmanılan yüksekliğe bağlı: iki basamak (36px) = bir tam el-ayak döngüsü.
+         İnerken ters döner, dururken eller basamakta kalır. */
+      this.phase += this.vy * dt * Math.PI / 18;
     } else if (this.grounded && speed > 6 && this.mode !== 'pry' && !this.action && this.mode !== 'crawl-old') {
       /* GERÇEK YÜRÜYÜŞ FAZI (u: 0..1) — topuk vuruşlarında adım sesi */
       const prevU = this.gaitU ?? 0;
@@ -346,6 +357,7 @@ class HumanRig {
     this.mantleP = state.mantleP ?? 0;
     this.rollP = state.rollP ?? 0;
     if (state.edgeX != null) this.edgeX = state.edgeX;
+    this.stair = state.stair ?? null;
 
     /* POZ GEÇİŞİ — mod veya yön değişince eski iskelet 0.15–0.2 sn içinde yenisine
        eriyerek geçer. Ani "pat" diye poz değiştirme (robot hissi) yok; yön değişimi
@@ -370,7 +382,7 @@ class HumanRig {
     if (this.mode === 'ragdoll') return 'ragdoll';
     if (this.action) return 'act:' + this.action.name;
     if (this.mode === 'pose') return 'pose:' + this.poseName;
-    if (['crawl', 'slide', 'swim', 'climb', 'hang', 'mantle', 'teeter', 'roll'].includes(this.mode)) return this.mode;
+    if (['crawl', 'slide', 'swim', 'climb', 'hang', 'mantle', 'teeter', 'roll', 'stairs'].includes(this.mode)) return this.mode;
     return 'stand';
   }
 
@@ -449,6 +461,7 @@ class HumanRig {
     if (this.mode === 'slide') return this.drawSlide();
     if (this.mode === 'swim') return this.drawSwim();
     if (this.mode === 'climb') return this.drawClimb();
+    if (this.mode === 'stairs' && this.stair) return this.drawStairs();
     if (this.mode === 'hang') return this.drawHang();
     if (this.mode === 'mantle') return this.drawMantle();
     if (this.mode === 'teeter') return this.drawTeeter();
@@ -1017,6 +1030,57 @@ class HumanRig {
     this.render(J, 0);
   }
 
+  /* ============ BASAMAKLI MERDİVEN ============
+     Ayaklar gerçekten basamaklara basar: biri basamakta dururken öteki bir
+     üst (inerken bir alt) basamağa kavis çizerek taşınır. Gövde eğime doğru
+     hafif öne eğilir, kollar karşıt salınır, bir el tırabzanı yoklar. */
+  drawStairs() {
+    const A = this.A, J = this.joints, s = this.s;
+    const S = this.stair;
+    const n = Math.max(8, Math.round(Math.abs(S.x1 - S.x0) / 16));
+    const D = (S.x1 - S.x0) / n, R = (S.y1 - S.y0) / n;     // basamak genişliği / yüksekliği (R < 0: yukarı)
+    const f = this.facing;
+    const up = Math.sign(this.vx || 0) === Math.sign(D) || (this.vx === 0 && f === Math.sign(D));
+    const u = clamp((this.x - S.x0) / (S.x1 - S.x0), 0, 1);
+    const sPos = u * n - 1;                                   // basamak birimiyle ilerleme (ayaklar gövdenin altında)
+    const tread = (i) => {
+      const k = clamp(i, -1, n);
+      return { x: S.x0 + D * (k + 0.5), y: S.y0 + R * (k + 1) };
+    };
+    /* ayak hedefi: çift basamaklarda sol, tek basamaklarda sağ ayak */
+    const footFor = (odd) => {
+      const off = odd ? 0 : 1;
+      const c = (sPos + off) / 2;
+      const i0 = Math.floor(c) * 2 + (odd ? 1 : 0);
+      const ph = c - Math.floor(c);
+      if (ph < 0.5) return tread(i0);
+      const k = smooth((ph - 0.5) * 2);
+      const a = tread(i0), b = tread(i0 + 2);
+      return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - Math.sin(k * Math.PI) * Math.abs(R) * 1.4 };
+    };
+    const fL = footFor(false), fR = footFor(true);
+    const lineY = lerp(S.y0, S.y1, u);
+    const bob = Math.abs(Math.sin(sPos * Math.PI)) * 1.6 * s;
+    const lean = f * (up ? 0.12 : -0.04);
+    /* kalça, iki ayağın ortalama yüksekliğinden bacak boyu kadar yukarıda (dizler hafif bükük) */
+    const legLen = A.legUp + A.legLo;
+    const pelvis = { x: this.x - f * 2 * s, y: Math.min(lineY, (fL.y + fR.y) / 2) - legLen * 0.9 + bob };
+    const neck = { x: pelvis.x + Math.sin(lean) * A.torso, y: pelvis.y - Math.cos(lean) * A.torso };
+    const head = { x: neck.x + f * A.headR * 0.45, y: neck.y - A.headR * 1.35 };
+    const legL = solveIK2(pelvis.x - A.hipW * 0.3 * f, pelvis.y, fL.x, fL.y - 1.5 * s, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.3 * f, pelvis.y, fR.x, fR.y - 1.5 * s, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const armReach = A.armUp + A.armLo;
+    const sw = Math.sin(sPos * Math.PI) * 0.55;
+    const hR = { x: neck.x + f * armReach * (0.25 + sw * 0.35), y: neck.y + armReach * 0.8 };
+    /* arka el tırabzanda (korkuluk çizgisi basamakların 70px üstünde) */
+    const hL = { x: neck.x + f * armReach * 0.45, y: lerp(S.y0, S.y1, clamp((neck.x + f * armReach * 0.45 - S.x0) / (S.x1 - S.x0), 0, 1)) - 70 };
+    const armL = solveIK2(neck.x - A.shW * 0.35 * f, neck.y, hL.x, hL.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armR = solveIK2(neck.x + A.shW * 0.35 * f, neck.y, hR.x, hR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
+    this.groundY = lineY;
+    this.render(J, lean);
+  }
+
   /* ============ KAYMA (koşarken eğil) ============
      ayaklar önde yere uzanır, gövde geriye yaslanır, arka el yere sürtünür */
   drawSlide() {
@@ -1148,6 +1212,16 @@ class HumanRig {
         P.v = def(-A.standH * 0.56, { x: -f * 1, y: -A.torso * 0.9 }, { x: f * 3, y: 2 + Math.sin(this.breathe * 1.3) * 1.5 },
           { x: -f * 9, y: -6 }, { x: -f * 7, y: -4 },
           { x: f * 4, y: 0 }, { x: -f * 15, y: 0 });
+        break;
+      case 'smashUp': // koca: iki yumruk başın üstünde, gövde geriye gerilmiş
+        P.v = def(-A.standH + 4, { x: -f * 6, y: -A.torso * 0.95 }, { x: -f * 3, y: -9 },
+          { x: f * 2, y: -A.torso - A.armUp * 1.15 }, { x: f * 8, y: -A.torso - A.armUp * 1.2 },
+          { x: -f * 10, y: 0 }, { x: f * 12, y: 0 });
+        break;
+      case 'smashDown': // koca: yumruklar yere iner, gövde öne kapanır
+        P.v = def(-A.standH * 0.78, { x: f * 16, y: -A.torso * 0.62 }, { x: f * 12, y: 4 },
+          { x: f * 30, y: 6 }, { x: f * 36, y: 8 },
+          { x: -f * 14, y: 0 }, { x: f * 16, y: 0 });
         break;
       case 'standSad':
       default:
@@ -1295,6 +1369,8 @@ class HumanRig {
     let thW = (fem ? 10.2 : 11.4) * s, caW = (fem ? 6.2 : 7.2) * s, anW = (fem ? 3.3 : 4.3) * s;
     let uaW = (fem ? 4.8 : 6.8) * s, faW = (fem ? 3.7 : 5.4) * s, wrW = (fem ? 2.5 : 3.5) * s;
     if (lurk) { thW = 5.6 * s; caW = 3.8 * s; anW = 2.0 * s; uaW = 3.4 * s; faW = 2.7 * s; wrW = 1.7 * s; }
+    const brute = this.variant === 'brute';
+    if (brute) { thW = 14 * s; caW = 10 * s; anW = 6 * s; uaW = 10.5 * s; faW = 9 * s; wrW = 6.5 * s; }
 
     /* kas çıkıntıları: uyluk, baldır (gastrocnemius), omuz (deltoid), pazu */
     const muscle = (a, b, t, r) => {
@@ -1468,6 +1544,10 @@ class HumanRig {
         g.lineTo(h.x + f * A.headR * 0.68, h.y + A.headR * 0.45);
         g.lineTo(h.x + f * A.headR * 0.15, h.y - A.headR * 0.62);
         g.closePath(); g.fillPath();
+      } else if (brute) {
+        // koca: omuzların arasına gömülü küçük kafa, öne çıkık çene, sırtta et kamburu
+        g.fillCircle(h.x + f * A.headR * 0.6, h.y + A.headR * 0.9, A.headR * 0.95);
+        g.fillEllipse(J.neck.x - f * A.shW * 0.4, J.neck.y - 2 * s, A.shW * 2.1, A.shW * 1.3);
       } else if (lurk) {
         // uzamış, hafif yana yatık kafatası — insan kafasına "neredeyse" benzer
         const tilt = Math.sin(this.breathe * 0.7) * 0.25 + 0.35;
@@ -1588,13 +1668,22 @@ class HumanRig {
       }
     }
     if (this.flashOn) {
-      /* sol elde fener — gövde ileri bakar, hafif aşağı eğik; ışık TAM merceğinden çıkar */
-      const h = J.handL;
-      const ang = this.flashAngle ?? 0.06;
+      /* sol elde fener — gövde ileri bakar, hafif aşağı eğik; ışık TAM merceğinden çıkar.
+         El feneri tutamayacak pozlarda (eşya alma, eğilme, kayma, tırmanma, kenar, takla)
+         el yere/ayağa iner ve ışık oradan çıkıyordu: o zaman fener göğüs askısına takılır. */
+      const handHeld = !this.action && ['idle', 'move', 'air', 'teeter'].includes(this.mode)
+        && J.handL.y < J.pelvis.y - 6 && (J.handL.x - J.neck.x) * f > 2;
+      const chest = {
+        x: lerp(J.neck.x, J.pelvis.x, 0.28) + f * A.shW * 1.05,
+        y: lerp(J.neck.y, J.pelvis.y, 0.28),
+      };
+      const h = handHeld ? J.handL : chest;
+      const ang = handHeld ? (this.flashAngle ?? 0.06) : 0.1;
       const ca = Math.cos(ang) * f, sa = Math.sin(ang);
       const nx = -sa, ny = ca * f;                     // gövdeye dik birim (ekran)
       const p = (along, side) => ({ x: h.x + ca * along * s + nx * side * s * f, y: h.y + sa * along * s + ny * side * s * f });
-      const q = [p(-3, -1.8), p(7, -1.8), p(7.5, -2.8), p(11, -2.8), p(11, 2.8), p(7.5, 2.8), p(7, 1.8), p(-3, 1.8)];
+      const L0 = handHeld ? -3 : 2;             // askıdayken gövdeye yaslı, kısa görünür
+      const q = [p(L0, -1.8), p(7, -1.8), p(7.5, -2.8), p(11, -2.8), p(11, 2.8), p(7.5, 2.8), p(7, 1.8), p(L0, 1.8)];
       g.fillStyle(col, 1);
       g.beginPath(); g.moveTo(q[0].x, q[0].y);
       for (let i = 1; i < q.length; i++) g.lineTo(q[i].x, q[i].y);

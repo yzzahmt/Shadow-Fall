@@ -1,0 +1,132 @@
+================================================================
+ SHADOW FALL
+ KİŞİSEL VERİLERİN KORUNMASI KANUNU (KVKK) AYDINLATMA METNİ
+ ve GİZLİLİK POLİTİKASI
+ Yürürlük tarihi: 12 Ekim 2026 · Sürüm 1.0
+================================================================
+
+Bu metin, 6698 sayılı Kişisel Verilerin Korunması Kanunu'nun ("KVKK")
+10. maddesi ve Aydınlatma Yükümlülüğünün Yerine Getirilmesinde Uyulacak
+Usul ve Esaslar Hakkında Tebliğ uyarınca, "Shadow Fall" mobil oyununu
+("Uygulama") kullanan kişileri ("Kullanıcı") bilgilendirmek amacıyla
+hazırlanmıştır.
+
+
+1. VERİ SORUMLUSU
+----------------------------------------------------------------
+Veri Sorumlusu : Ahmet Yaz
+Web sitesi     : www.Yazify.net
+E-posta        : yzz_software@hotmail.com
+
+
+2. KISACA: UYGULAMA KİŞİSEL VERİ TOPLAMAZ
+----------------------------------------------------------------
+Shadow Fall çevrimdışı oynanan, tek oyunculu bir oyundur.
+
+  • Üyelik, hesap, giriş ya da kayıt yoktur.
+  • Ad, soyad, e-posta, telefon, konum, rehber, fotoğraf, kamera,
+    mikrofon gibi hiçbir kişisel veri istenmez ve toplanmaz.
+  • Reklam, reklam kimliği (Advertising ID), analiz (analytics),
+    çökme raporlama ya da üçüncü taraf takip aracı kullanılmaz.
+  • Uygulama içi satın alma yoktur.
+  • Uygulama hiçbir veriyi Veri Sorumlusuna, bir sunucuya ya da
+    üçüncü kişilere göndermez.
+
+
+3. CİHAZDA SAKLANAN BİLGİLER
+----------------------------------------------------------------
+Oyunun devam edebilmesi için yalnızca aşağıdaki oyun bilgisi
+Kullanıcının kendi cihazında, uygulamanın yerel depolama alanında
+tutulur:
+
+  • Ulaşılan bölüm numarası
+  • Oyun içi envanter durumu (pil, bandaj, şarjör vb.)
+  • Ses ve görüntü ayarları
+
+Bu bilgiler bir kişiyi tanımlamaz, kişisel veri niteliğinde değildir
+ve cihazdan dışarı çıkarılmaz. Uygulama silindiğinde ya da uygulama
+verileri temizlendiğinde kalıcı olarak silinir.
+
+Android'in sistem yedekleme özelliği Kullanıcının cihazında açıksa,
+yukarıdaki oyun kaydı Google tarafından Kullanıcının kendi Google
+hesabına yedeklenebilir. Bu yedekleme Google'ın hizmeti olup
+Kullanıcının cihaz ayarlarından yönetilir; Veri Sorumlusu bu yedeğe
+erişemez.
+
+
+4. UYGULAMA İZİNLERİ
+----------------------------------------------------------------
+  • İnternet (android.permission.INTERNET): Uygulamanın üzerine
+    kurulu olduğu web görünümü (WebView) bileşeninin teknik bir
+    gereğidir. Oyun tamamen çevrimdışı çalışır ve internet üzerinden
+    hiçbir veri göndermez veya almaz.
+  • Titreşim (android.permission.VIBRATE): Oyun içi dokunsal geri
+    bildirim (ör. karakter hasar aldığında kısa titreşim) için
+    kullanılır. Herhangi bir veri işlemez.
+
+
+5. KİŞİSEL VERİ İŞLEME AMAÇLARI, HUKUKİ SEBEP VE AKTARIM
+----------------------------------------------------------------
+Uygulama kişisel veri işlemediğinden, KVKK m.5 ve m.6 kapsamında bir
+işleme amacı veya hukuki sebep bulunmamakta; KVKK m.8 ve m.9
+kapsamında yurt içine veya yurt dışına herhangi bir aktarım
+yapılmamaktadır.
+
+Kullanıcının kendi isteğiyle Veri Sorumlusuna e-posta göndermesi
+halinde, e-posta adresi ve iletide paylaşılan bilgiler yalnızca
+başvuruyu yanıtlamak amacıyla, KVKK m.5/2-c (sözleşmenin kurulması
+veya ifası) ve m.5/2-f (meşru menfaat) hukuki sebeplerine dayanarak
+işlenir, üçüncü kişilerle paylaşılmaz ve yanıtın verilmesinden sonra
+makul süre içinde silinir.
+
+
+6. ÇOCUKLARIN GİZLİLİĞİ
+----------------------------------------------------------------
+Uygulama hiçbir yaş grubundan kişisel veri toplamaz. Oyun karanlık ve
+gerilimli sahneler içerdiğinden 12 yaş ve üzeri oyuncular için
+önerilir.
+
+
+7. İLGİLİ KİŞİNİN HAKLARI (KVKK m.11)
+----------------------------------------------------------------
+Herkes, Veri Sorumlusuna başvurarak kendisiyle ilgili;
+
+  a) Kişisel veri işlenip işlenmediğini öğrenme,
+  b) Kişisel verileri işlenmişse buna ilişkin bilgi talep etme,
+  c) Kişisel verilerin işlenme amacını ve bunların amacına uygun
+     kullanılıp kullanılmadığını öğrenme,
+  ç) Yurt içinde veya yurt dışında kişisel verilerin aktarıldığı
+     üçüncü kişileri bilme,
+  d) Kişisel verilerin eksik veya yanlış işlenmiş olması halinde
+     bunların düzeltilmesini isteme,
+  e) KVKK m.7'de öngörülen şartlar çerçevesinde kişisel verilerin
+     silinmesini veya yok edilmesini isteme,
+  f) (d) ve (e) bentleri uyarınca yapılan işlemlerin, kişisel
+     verilerin aktarıldığı üçüncü kişilere bildirilmesini isteme,
+  g) İşlenen verilerin münhasıran otomatik sistemler vasıtasıyla
+     analiz edilmesi suretiyle kişinin kendisi aleyhine bir sonucun
+     ortaya çıkmasına itiraz etme,
+  ğ) Kişisel verilerin kanuna aykırı olarak işlenmesi sebebiyle
+     zarara uğraması halinde zararın giderilmesini talep etme
+
+haklarına sahiptir.
+
+
+8. BAŞVURU YÖNTEMİ
+----------------------------------------------------------------
+Haklarınıza ilişkin taleplerinizi, Veri Sorumlusuna Başvuru Usul ve
+Esasları Hakkında Tebliğ'e uygun olarak yzz_software@hotmail.com
+adresine e-posta ile iletebilirsiniz. Başvurular, talebin niteliğine
+göre en kısa sürede ve en geç 30 (otuz) gün içinde ücretsiz olarak
+sonuçlandırılır.
+
+
+9. DEĞİŞİKLİKLER
+----------------------------------------------------------------
+Bu metin, Uygulamada veya mevzuatta değişiklik olması halinde
+güncellenebilir. Güncel metin uygulama içindeki "GİZLİLİK" ekranında
+ve www.Yazify.net adresinde yayımlanır.
+
+
+Ahmet Yaz
+www.Yazify.net · yzz_software@hotmail.com

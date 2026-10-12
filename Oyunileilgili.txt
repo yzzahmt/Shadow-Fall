@@ -1,0 +1,221 @@
+================================================================
+ SHADOW FALL — OYUN İLE İLGİLİ NOTLAR
+ İstek listesi ve yapılan işler · 12 Ekim 2026 (v1.0.0 — Play Store sürümü)
+================================================================
+
+
+İSTEK LİSTESİ
+----------------------------------------------------------------
+  [x] Karakter bazen uçuyor
+  [x] Canavarların hepsi aynı tipe sahip
+  [x] Evler daha büyük olmalı; eve girince dışarısı değil sadece evin içi görünmeli
+  [x] Sahnenin gidişatına göre müzik değişmeli; aksiyon sahnelerinde gerilim müziği
+  [x] Fener Kai'nin ayağından çıkıyor
+  [x] Evler, fabrikalar vb. daha büyük; bazen çıkması 2-3 bölüm sürmeli
+  [x] Merdiven çıkma animasyonu yok
+  [x] Her şey kutudan çıkmasın: çekmece, dolap, saklı yerler
+  [x] Bandaj saçma yerlerden çıkmasın: çekmece / saklı yerlerden çıksın
+  [x] Oyunda tek bir müzik hâkim; bir sürü farklı müzik olsun
+  [x] Yangın bölümü daha gerçekçi: ağaca yıldırım düşer, yangın ağaçlardan
+      çimlere yavaş yavaş yayılır, ondan kaçılır
+  [x] Canavarlar bir yerden sonra peşimizden koşmayı bırakıyor
+  [x] Boss'ları kaldır, yerine diğer bölümlere daha fazla şey ekle
+  [x] Her bölüm bir bulmaca olsun (kanal + su seviyesi, ağırlık-basınç vb.)
+  [x] Oyunun başındaki altyazıları kaldır
+  [x] Google Play Store'a hazırla: KVKK metni, .aab dosyası vb.
+  [x] KVKK metnini kvkk.txt dosyasına kaydet
+  [x] Commit at ve push'la
+
+
+YAPILANLAR
+----------------------------------------------------------------
+
+1) KARAKTERİN UÇMASI
+   Sebep: Yerdeki teneke/taş gibi küçük fizik eşyaları oyuncunun gövdesinin
+   altına sıkışınca fizik motoru oyuncuyu yukarı fırlatıyordu. Ayrıca oyuncu
+   üstünde durduğu itme kutusunu "tutabiliyordu".
+   Çözüm:
+     • Oyuncu artık küçük eşyalarla çarpışmıyor (eşyalar yine zeminde
+       yuvarlanıp ses çıkarıyor, dokunarak alınıyor).
+     • Uçma koruması: oyuncu yalnız kendi zıplamasıyla, sudan çıkarken ya da
+       kenardan geri sıçrarken hızla yükselebilir; başka her fırlatma kesilir.
+     • Üstünde durulan kutu tutulamıyor.
+
+2) FENER AYAKTAN ÇIKIYORDU
+   Sebep: Fener sol elde çiziliyor, ışık da elden çıkıyordu. Eşya alırken,
+   eğilirken, kayarken, tırmanırken el yere/ayağa indiği için ışık oradan
+   çıkıyordu.
+   Çözüm: El feneri tutamayacak her pozda fener göğüs askısına takılıyor,
+   ışık göğüsten çıkıyor. Ayakta/yürürken eskisi gibi elde.
+
+3) YARATIKLAR — 6 FARKLI TÜR
+   Eski: Stalker, Hound, Lurker (ama her perdede çoğunlukla tek tür).
+   Yeni türler:
+     • KÖR SÜRÜNGEN (Crawler): eklem eklem kırkayak gövdesi. Görmez,
+       titreşimi duyar. Koşana uzaktan saldırır; eğilerek yavaşça geçilir.
+     • FISILTI (Wraith): paçavra örtülü, süzülen gölge. Yavaş ama durmaz,
+       uçurum/su dinlemez. Kurşun işlemez; fener üstüne tutulunca donar,
+       uzun tutulursa dağılır.
+     • KOCA (Brute): iri, kambur dev. Görünce böğürüp düz hat boyunca hücum
+       eder, duvara/kenara toslarsa sersemler (o an savunmasız). Yakına
+       gelince iki yumruğunu kaldırıp yere vurur.
+   Her perdenin 3-6 türlük karışık listesi var; art arda gelen yaratık
+   odaları farklı türden seçiliyor. Türler bölüm ilerledikçe açılıyor.
+
+4) CANAVARLAR KOVALAMAYI BIRAKIYORDU
+   Sebep: Yaratıklar devriye aralığının dışına çıkamıyor, biraz
+   uzaklaşınca vazgeçiyordu.
+   Çözüm: Her yaratığın "kovalama bölgesi" artık doğduğu zemin şeridinin
+   tamamı (uçurum, duvar ya da kapı gelene kadar). Bu bölge içinde
+   peşini bırakmaz; ancak ulaşamayacağı bir yere geçersen (uçurumun öbür
+   yanı, yüksek bir kenar) kenarda bağırıp bekler, sonra yuvasına döner.
+
+5) BOSS'LAR KALDIRILDI
+   10, 20, 30... bölümlerdeki boss arenaları, boss kapıları, boss can barı
+   ve boss isimleri kaldırıldı. Bu bölümler artık normal bölüm: bulmaca,
+   aksiyon sahnesi ve yaratık odalarıyla dolu.
+
+6) HER BÖLÜMDE BULMACA (js/puzzles.js — yeni)
+   Her bölümde en az bir, 12. bölümden sonra iki farklı bulmaca var.
+   Hepsi geçilmez yapıldı (zıplama ≈180px ölçülüp duvarlar yüksek ve
+   tutunmaya kapalı tutuldu).
+     • KANAL: karşı kıyı yüksek, su sığ, içinde tahta yüzüyor ama işe
+       yaramıyor. Su altındaki bölmenin altından yüzüp vanaya ulaş, çevir:
+       su yükselir, tahta yükselir, karşıya atlarsın.
+     • BİRLEŞİK KAPLAR: ağır sandığı piston plakasına it → basınç öbür
+       haznedeki suyu, sal da seni yukarı taşır. Basınç göstergesi var.
+     • KARŞI AĞIRLIK ASANSÖRÜ: sandığı bir kafese koy, öbür kafese bin,
+       freni bırak. Karşı taraf hafifse asansör geri döner.
+     • BASKI PLAKASI: ağır kapı yalnız plakaya bir şey bastığı sürece açık;
+       üstüne kendin basarsan kapıya yetişemezsin, sandık gerek.
+     • IŞIK GÖZÜ: kapının üstündeki sensöre feneri tut.
+     • ZAMANLI KAPI: kolu çek, kapı kapanmadan koş, alçak kirişin altından kay.
+     Eski bulmacalar da duruyor ve sertleştirildi: kol→merdiven (artık
+     zıplayarak çıkılamıyor), kutu itip yükseltiye çıkma, jeneratör,
+     dükkân (sigorta + şifre notları), fabrika lamba sırası.
+   Uzun süre takılınca sessiz, ipucu niteliğinde bir kart çıkıyor
+   (çözümü söylemiyor).
+
+7) BÜYÜK EVLER + İÇERİDE SADECE İÇERİSİ (js/buildings.js — yeni)
+     • İki katlı evler (1150-1600 px): zemin katta mutfak/oturma odası,
+       basamaklı merdivenle üst kat (yatak odası, banyo), el merdiveniyle
+       iniş. Arka kapı kilitli, anahtar üst katta bir dolapta/çekmecede.
+     • Eve girince yapının dışı tamamen kararıyor, kamera evin duvarlarına
+       kilitleniyor; yağmur ve rüzgâr sesi boğuklaşıyor.
+
+8) 2-3 BÖLÜM SÜREN YAPILAR
+     8-9 AV KÖŞKÜ · 19-20 YOL MOTELİ · 29-30 BATAKLIK KONAĞI ·
+     39-40 MADEN TESİSİ · 44-46 DÖKÜMHANE · 56-57 SU ARITMA TESİSİ ·
+     63-65 HASTANE · 73-74 KIŞLA · 81-82 KÜTÜPHANE · 96-97 TAPINAK
+   İlk bölümde kapıdan girilir, ara bölümler tamamen içeride geçer, son
+   bölümde dışarı çıkılır. Her yapının kendi duvar dokusu (fayans, tuğla,
+   ahşap), odaları, ara katı, kendine uygun bulmacaları ve saklama
+   yerleri var. Bölüm kartında "HASTANE — 2 / 3" gibi gösteriliyor.
+
+9) MERDİVEN ANİMASYONU
+     • El merdiveni: animasyon hiç oynamıyordu (tırmanırken hız sıfır
+       gönderiliyordu). Artık eller ve ayaklar tırmanılan yüksekliğe bağlı
+       çapraz ritimle basamakları kavrıyor, inerken ters dönüyor; tepede
+       kenara tutunup gövdesini yukarı çekerek çıkıyor. Tepeden aşağı
+       bakıp inmek de mümkün.
+     • Basamaklı merdiven (yeni): ayaklar gerçekten basamaklara basıyor,
+       gövde eğime doğru eğiliyor, bir el tırabzanda.
+
+10) SAKLAMA YERLERİ — HER ŞEY KUTUDAN ÇIKMIYOR
+   15 tür: komodin çekmecesi, dolap, gardırop, ilk yardım dolabı, işçi
+   dolabı, alet çantası, buzdolabı, terk edilmiş sırt çantası, ağaç
+   kovuğu, araç torpidosu, posta kutusu, çöp kutusu, sandık, cephane
+   kutusu, havalandırma ızgarası. Her perdeye uygun olanlar seçiliyor
+   (ormanda kovuk ve çanta, şehirde posta kutusu, fabrikada dolap...).
+   Açılırken uzanma/eğilme animasyonu oynuyor, bulunan şey doğrudan
+   envantere geçiyor ("+ BANDAJ"); bazıları boş, bazıları levyeyle
+   zorlanıyor.
+
+11) BANDAJ YALNIZ MANTIKLI YERLERDEN
+   Bandaj artık asla yerde ya da kırılan kutuda çıkmıyor; yalnız tıbbi
+   yerlerde: ilk yardım dolabı, çekmece, dolap, gardırop, sırt çantası,
+   sandık. Testle 100 bölümün tamamında doğrulandı.
+
+12) MÜZİK — TEK MÜZİK YERİNE 18 PARÇA (js/music.js — yeni)
+   Eskiden her bölümde aynı karanlık dron çalıyordu. Şimdi bestelenmiş,
+   her biri farklı ton/tempo/enstrümanlı parçalar var:
+     • Keşif temaları (her perdeye ayrı): orman piyanosu, kül yolu gitarı,
+       bataklık kamışı, maden müzik kutusu, fabrika mekanik ritmi, nehir
+       6/8 piyanosu, ölü şehir melankolik piyano+yaylı, kale trampet+bakır,
+       sis kulesi koro+çan, geçit yükselen yaylılar.
+     • İç mekân, gizlilik (pizzicato + tik tak), bulmaca (meraklı çanlar),
+       KOVALAMACA/AKSİYON (140 bpm yaylı ostinato, taiko, braam),
+       KAÇIŞ (152 bpm — yangın, su baskını, dev, çöken köprü),
+       araç kaçışı, bomba.
+   Müzik yönetmeni sahneye göre yumuşak geçişle parça değiştiriyor;
+   tehlike geçince aksiyon müziği birkaç saniye daha sürüyor.
+
+13) GERÇEKÇİ YANGIN
+     • Bölüm başında arkandaki ağaca yıldırım düşüyor (iç mekânda elektrik
+       panosu kısa devre yapıyor): ekran çakıyor, gök gürlüyor.
+     • Alev önce ağacı sarıyor, otlara iniyor, ot ot, ağaçtan ağaca
+       yayılıyor. Rüzgâr kaçtığın yöne estiği için o yöne daha hızlı.
+     • Rüzgârın taşıdığı közler arkanda yeni ocaklar açıyor (önüne asla).
+     • Yanan ağaçlar bir süre sonra devriliyor; altında kalmak can yakar.
+     • Bölüm sonundaki dereye varınca yangın orada duruyor.
+
+14) GİRİŞ ALTYAZILARI KALDIRILDI
+   Giriş sinematiğindeki tüm altyazılar (Maria'nın "KAİ!" çığlığı dahil)
+   kaldırıldı; sahne sözsüz anlatılıyor. Final sahnesine dokunulmadı.
+
+15) DİĞER DÜZELTMELER
+     • Bölüm üreteci her cihazda aynı bölümü üretmiyordu (rastgele sıralama
+       motor sürümüne göre değişiyordu). Tohumlu karıştırmaya geçildi.
+     • Kısa ekranlı yatay telefonlarda ana menü taşıyordu; düzeltildi.
+     • Android geri tuşu: oyunda duraklatır, panelde geri döner, ana
+       menüde uygulamadan çıkar. Uygulama arka plana atılınca oyun
+       duraklar, ses kesilir.
+     • Ana menüye GİZLİLİK ekranı eklendi (KVKK özeti).
+     • Phaser ve yazı tipleri projeye gömüldü: oyun internetsiz çalışıyor.
+
+16) GOOGLE PLAY HAZIRLIĞI
+     • Capacitor 8 ile Android projesi (android/): paket adı
+       net.yazify.shadowfall, sürüm 1.0.0 (versionCode 1), hedef SDK 36,
+       yatay tam ekran (immersive), ekran açık kalıyor, titreşim izni.
+     • İmzalı .aab: release/ShadowFall-v1.0.0-release.aab
+     • İmza anahtarı (upload key): ~/AndroidKeystores/ShadowFall/
+       shadowfall-upload.jks + keystore.properties (şifreler). REPODA DEĞİL.
+       BU İKİ DOSYAYI MUTLAKA YEDEKLE. Play Console'da "Play App Signing"
+       açılmalı.
+     • İkonlar (tüm yoğunluklar + uyarlanabilir ikon), Android 12 açılış
+       ekranı, eski cihazlar için açılış görselleri.
+     • Mağaza görselleri: assets/store/ (512 ikon, 1024x500 tanıtım
+       görseli, 1920x1080 ekran görüntüleri).
+     • KVKK aydınlatma metni: kvkk.txt (veri sorumlusu Ahmet Yaz,
+       www.Yazify.net, yzz_software@hotmail.com).
+     • Gizlilik politikası web sayfası: docs/privacy-policy.html
+       (Play Console bir URL istiyor: bu sayfayı Yazify.net'e yükle).
+     • Mağaza metni, veri güvenliği ve içerik derecelendirme yanıtları:
+       docs/PLAY_STORE.md
+     • Emülatörde (Pixel 8, Android 16) kurulup açıldığı, menünün ve
+       oyunun çalıştığı doğrulandı.
+
+17) TESTLER
+     • tests/levels.test.js: 100 bölümü üretip zemin, bulmaca, anahtar,
+       pil, bandaj kuralları ve köprüsüz boşluk kontrolü — hepsi geçti.
+     • tests/smoke.js: 101 bölümün (giriş dahil) hepsi tarayıcıda açılıp
+       oynatıldı — çalışma hatası yok.
+     • tests/play.js: kanal, birleşik kaplar, asansör, baskı plakası, ışık
+       gözü, zamanlı kapı, basamaklı merdiven, el merdiveni, ev içi
+       görünüm, saklama yeri, fener, kovalama, uçma koruması, müzik
+       geçişi — 14/14 geçti.
+
+18) PROJE DÜZENİ
+     Eski yardımcı dosyalar (patch*.py, fix_*.py, temp.js, motor_engine.js,
+     index_backup_*.html, eski test dosyaları, rig_lab) kaldırıldı.
+     README.md, scripts/ (web derleme + ikon üretici), tests/, docs/
+     eklendi.
+
+
+YAPILACAKLAR (ÖNERİ)
+----------------------------------------------------------------
+  [ ] docs/privacy-policy.html sayfasını www.Yazify.net'e yükle, adresi
+      Play Console'a gir.
+  [ ] Play Console'da uygulamayı oluştur, .aab'yi önce "Dahili test"e yükle.
+  [ ] Gerçek bir Android telefonda tam oynanış testi (FPS, dokunma hissi).
+  [ ] Bulmaca zorluk dengesi için birkaç kişiye oynat.

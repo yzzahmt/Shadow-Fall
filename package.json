@@ -1,7 +1,31 @@
 {
+  "name": "shadow-fall",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shadow Fall — atmospheric 2D silhouette puzzle-platformer for Android.",
+  "author": "Ahmet Yaz <yzz_software@hotmail.com>",
+  "homepage": "https://www.yazify.net",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:bundle": "npm run android:sync && cd android && ./gradlew bundleRelease",
+    "test": "node tests/levels.test.js",
+    "test:play": "node tests/play.js",
+    "test:smoke": "node tests/smoke.js",
+    "serve": "npx http-server -p 8765 -c-1"
+  },
   "dependencies": {
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "canvas": "^3.2.3",
-    "jsdom": "^29.1.1",
-    "puppeteer": "^25.1.0"
+    "phaser": "^3.60.0",
+    "puppeteer": "^25.13.0"
   }
 }

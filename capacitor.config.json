@@ -1,0 +1,13 @@
+{
+  "appId": "net.yazify.shadowfall",
+  "appName": "Shadow Fall",
+  "webDir": "www",
+  "backgroundColor": "#050507",
+  "loggingBehavior": "none",
+  "android": {
+    "backgroundColor": "#050507",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

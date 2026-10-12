@@ -1,8 +1,11 @@
 /* ============================================================
-   SHADOW FALL — Creatures v2
-   - Stalker: Kök Canavarı — kambur, uzun kollu, dal boynuzlu (+ boss varyantı)
+   SHADOW FALL — Creatures v3
+   - Stalker: Kök Canavarı — kambur, uzun kollu, dal boynuzlu
    - Hound: 4 bacaklı hızlı tazı — atılarak saldırır
    - Lurker: uzun insansı gölge — dört ayak koşusuna geçer
+   - Crawler: kör sürüngen — titreşimle bulur, eğilerek geçilir
+   - Wraith: fısıltı — süzülür, durmaz, yalnız fener ışığı durdurur
+   - Brute: koca — düz hat boyunca hücum eder, duvara tosları sersemler
    - Soldier: devriye + fener konisi + karanlık farkındalığı, ses takibi,
      arama, kuşatma, şarjör değiştirir, araba anahtarı taşıyabilir
    Hepsi hearNoise(x, güç) ile sahnedeki seslere tepki verir.
@@ -16,6 +19,34 @@ function visFactor(scene, px, py) {
   if (!scene.lights2) return 1;
   const lv = scene.lights2.levelAt(px, py);
   return 0.18 + 0.82 * lv;   // zifiri karanlıkta %18 menzil
+}
+
+/* ortak: kovalama bölgesi. Yaratık doğduğu zemin şeridinin tamamında (aynı
+   yükseklikte, uçurum/duvar gelene kadar) peşinden koşar. Eskiden devriye
+   aralığının dışına çıkınca ya da biraz uzaklaşınca vazgeçiyordu. */
+function creatureTerritory(scene, cfg) {
+  const r = scene.walkRange?.(cfg.x, cfg.groundY);
+  const lo = Math.min(cfg.patrolMinX ?? cfg.x, r ? r[0] : cfg.x);
+  const hi = Math.max(cfg.patrolMaxX ?? cfg.x, r ? r[1] : cfg.x);
+  return [lo, hi];
+}
+/* oyuncuya ulaşabilir mi: bölgesinin içinde ve çok yukarıda değil */
+function creatureCanReach(cr, player) {
+  const [lo, hi] = cr.terr;
+  return player.x > lo - 12 && player.x < hi + 12 && player.y > cr.groundY - 240 && Math.abs(player.x - cr.x) < 1500;
+}
+/* kovalarken: ulaşamıyorsa birkaç saniye bekleyip vazgeçer (kenarda durup bağırır) */
+function creatureGiveUp(cr, player, dt) {
+  if (creatureCanReach(cr, player)) { cr.loseT = 0; return false; }
+  cr.loseT = (cr.loseT ?? 0) + dt;
+  if (cr.loseT > 0.2 && !cr._roaredLost) { cr._roaredLost = true; SFAudio.monsterRoar(false); }
+  if (cr.loseT > 3) { cr.loseT = 0; cr._roaredLost = false; return true; }
+  return false;
+}
+function creatureClamp(cr) {
+  const chasing = !['lurk', 'prowl', 'wander', 'idle', 'dead'].includes(cr.state);
+  const lo = chasing ? cr.terr[0] : cr.minX - 60, hi = chasing ? cr.terr[1] : cr.maxX + 60;
+  cr.x = clamp(cr.x, lo, hi);
 }
 
 /* ortak: yaratık ilk kez fark ettiğinde korku vurgusu (çığlık + ekran) */
@@ -50,6 +81,7 @@ class Stalker {
     this.name = cfg.name;
     this.canCharge = cfg.charges ?? this.boss;
     this.chaseSpeed = cfg.chaseSpeed;
+    this.terr = creatureTerritory(scene, cfg);
 
     this.bodyR = 22 * this.s;
     this.facing = cfg.facing ?? 1;
@@ -149,6 +181,9 @@ class Stalker {
     switch (this.state) {
       case 'lurk': {
         this.vx = Math.sin(this.breathe * 0.5) * 8;
+        if (this.x < this.minX - 10 || this.x > this.maxX + 10) {     // kovalamadan dönüş: yuvasına yürür
+          this.facing = this.x < this.minX ? 1 : -1; this.vx = this.facing * 60 * this.s;
+        }
         if (playerInRoom && dist < senseDist) {
           this.state = 'alert'; this.alertT = 0;
           creatureScare(this, this.boss ? 1.2 : 1);
@@ -169,7 +204,8 @@ class Stalker {
       case 'chase': {
         this.facing = dx > 0 ? 1 : -1;
         this.vx = this.facing * (this.chaseSpeed ?? 175 * this.s * 0.8);
-        if (!playerInRoom || dist > Math.max(700, senseDist + 250)) { this.state = 'lurk'; this.vx = 0; }
+        if (!creatureCanReach(this, player)) this.vx *= 0.15;          // kenarda bekler
+        if (creatureGiveUp(this, player, dt)) { this.state = 'lurk'; this.vx = 0; }
         else if (dist < this.bodyR + 34) { this.state = 'strike'; this.strikeT = 0; }
         else if (this.canCharge && dist > 380 && Math.random() < dt * 0.25) { this.state = 'charge'; this.chargeT = 0; SFAudio.monsterRoar(false); }
         if (this.roarCD <= 0 && Math.random() < dt * 0.25) { SFAudio.monsterRoar(false); this.roarCD = 3.5; }
@@ -197,7 +233,7 @@ class Stalker {
           }
           SFAudio.thud(1);
           this.scene.cameras.main.shake(280, 0.01);
-          this.state = dist < 220 ? 'chase' : 'lurk';
+          this.state = 'chase';
         }
         break;
       }
@@ -205,7 +241,7 @@ class Stalker {
     this.rear = lerp(this.rear, rearT, 1 - Math.exp(-dt * 8));
 
     this.x += this.vx * dt;
-    this.x = clamp(this.x, this.minX, this.maxX);
+    creatureClamp(this);
     const fast = this.state === 'chase' || this.state === 'charge';
     /* gövde: hızlıyken öne eğik, kambur sırt nefesle kabarır; tehditte ayağa kalkar */
     const bodyLift = (40 * this.s) + Math.sin(this.breathe * (fast ? 7 : 1.3)) * 2 * this.s + this.rear * 14 * this.s;
@@ -377,6 +413,7 @@ class Hound {
     this.hp = cfg.hp ?? 3; this.maxHp = this.hp;
     this.boss = !!cfg.boss; this.name = cfg.name;
     this.chaseSpeed = cfg.chaseSpeed;
+    this.terr = creatureTerritory(scene, cfg);
     this.gfx = scene.add.graphics().setDepth(95);
     addRimGlow(this.gfx, 0x8a6a64, 1.0);
     this.facing = cfg.facing ?? -1;
@@ -431,6 +468,7 @@ class Hound {
     switch (this.state) {
       case 'prowl': {
         this.vx = this.facing * 50 * this.s;
+        if (this.x > this.maxX + 70 || this.x < this.minX - 70) { this.facing = this.x < this.minX ? 1 : -1; this.vx = this.facing * 90 * this.s; }
         if (this.x > this.maxX) this.facing = -1;
         if (this.x < this.minX) this.facing = 1;
         if (dist < sense && px > this.minX - 100 && px < this.maxX + 100) {
@@ -443,7 +481,8 @@ class Hound {
         this.facing = dx > 0 ? 1 : -1;
         this.vx = this.facing * (this.chaseSpeed ?? 290 * this.s);
         jawT = 0.5 + Math.sin(this.breathe * 14) * 0.3;
-        if (dist > Math.max(600, sense + 200) && !this.chaseSpeed) this.state = 'prowl';
+        if (!creatureCanReach(this, player)) this.vx *= 0.15;
+        if (creatureGiveUp(this, player, dt)) this.state = 'prowl';
         else if (dist < 170 && Math.abs(py - this.y) < 90) {
           this.state = 'lunge'; this.lungeT = 0;
           this.vy = -340; this.airborne = true;
@@ -480,7 +519,7 @@ class Hound {
     this.jaw = lerp(this.jaw, jawT, 1 - Math.exp(-dt * 12));
 
     this.x += this.vx * dt;
-    this.x = clamp(this.x, this.minX - 60, this.maxX + 60);
+    creatureClamp(this);
     const run = Math.abs(this.vx) > 120;
     if (!this.airborne) this.y = this.groundY - 30 * this.s + (run ? Math.sin(this.phase * 2) * 2.5 * this.s : Math.sin(this.breathe * 2) * 0.8);
     /* adım fazı mesafeye bağlı — pençeler kaymaz */
@@ -627,6 +666,7 @@ class Lurker {
     this.hp = cfg.hp ?? 5; this.maxHp = this.hp;
     this.boss = !!cfg.boss; this.name = cfg.name;
     this.chaseSpeed = cfg.chaseSpeed;
+    this.terr = creatureTerritory(scene, cfg);
     this.rig = new HumanRig(scene, { scale: this.s, depth: 95, color: 0x060609, variant: 'lurker', rimColor: 0x7a6a72, rimStrength: 1.1 });
     this.eyeGfx = scene.add.graphics().setDepth(97);
     this.facing = cfg.facing ?? -1;
@@ -679,7 +719,7 @@ class Lurker {
           this.vx = this.facing * 24 * this.s;
           if (this.x > this.maxX) this.facing = -1;
           if (this.x < this.minX) this.facing = 1;
-          if (dist < sense) { this.state = 'stare'; this.stareT = 0; SFAudio.lurkerWhisper?.(); }
+          if (dist < sense && creatureCanReach(this, player)) { this.state = 'stare'; this.stareT = 0; SFAudio.lurkerWhisper?.(); }
           break;
         }
         case 'stare': {
@@ -693,7 +733,8 @@ class Lurker {
         case 'chase': {
           this.facing = dx > 0 ? 1 : -1;
           this.vx = this.facing * (this.chaseSpeed ?? 250 * Math.min(1.3, this.s * 0.75));
-          if (dist > Math.max(640, sense + 260) && !this.chaseSpeed) this.state = 'wander';
+          if (!creatureCanReach(this, player)) this.vx *= 0.15;
+          if (creatureGiveUp(this, player, dt)) this.state = 'wander';
           else if (dist < 46 * this.s) { this.state = 'strike'; this.strikeT = 0; }
           break;
         }
@@ -709,7 +750,7 @@ class Lurker {
         }
       }
       this.x += this.vx * dt;
-      this.x = clamp(this.x, this.minX - 50, this.maxX + 50);
+      creatureClamp(this);
     }
 
     /* bakış/gezinti sırasında stop-motion: rig yalnız ~12 kare/sn güncellenir */
@@ -748,11 +789,421 @@ class Lurker {
   }
 }
 
+/* ---------------- CRAWLER (kör sürüngen) ----------------
+   Yere yapışık, eklem eklem uzun gövde; her halkada iki ince bacak.
+   GÖRMEZ: yalnız titreşimi duyar. Koşan / zıplayıp sert inen oyuncuyu
+   uzaktan bulur; eğilerek yürüyene ancak dibine kadar sokulunca uyanır.
+   Ani bir şahlanışla başını kaldırıp ileri atılır. */
+class Crawler {
+  constructor(scene, cfg) {
+    this.scene = scene;
+    this.type = 'crawler';
+    this.s = cfg.scale ?? 1;
+    this.x = cfg.x; this.groundY = cfg.groundY;
+    this.minX = cfg.patrolMinX; this.maxX = cfg.patrolMaxX;
+    this.terr = creatureTerritory(scene, cfg);
+    this.hp = cfg.hp ?? 3; this.maxHp = this.hp;
+    this.chaseSpeed = cfg.chaseSpeed;
+    this.facing = cfg.facing ?? -1;
+    this.vx = 0;
+    this.state = cfg.startChase ? 'chase' : 'idle';
+    this.t = Math.random() * 10;
+    this.rearT = 0; this.lungeT = 0; this.stunT = 0;
+    this.dead = false; this.onStrike = null;
+    this.bodyR = 16 * this.s;
+    this.gfx = scene.add.graphics().setDepth(95);
+    addRimGlow(this.gfx, 0x8a7a64, 0.9);
+    const N = 11;
+    this.segs = [];
+    for (let i = 0; i < N; i++) this.segs.push({ x: this.x - this.facing * i * 9 * this.s, y: this.groundY - 6 * this.s });
+  }
+  get y() { return this.groundY - 10 * this.s; }
+  destroy() { this.gfx.destroy(); }
+
+  hearNoise(x, power) {
+    if (this.dead || this.state !== 'idle') return;
+    if (power >= 0.3 && Math.abs(x - this.x) < 520) {
+      this.facing = x > this.x ? 1 : -1;
+      this.state = 'rear'; this.rearT = 0; SFAudio.lurkerWhisper?.();
+    }
+  }
+  takeDamage(dmg, dir) {
+    if (this.dead) return;
+    this.hp -= dmg; this.stunT = 0.25;
+    SFAudio.houndYelp?.();
+    if (this.state === 'idle') { this.state = 'chase'; creatureScare(this, 0.7); }
+    if (this.hp <= 0) { this.dead = true; this.state = 'dead'; this.deathT = 0; SFAudio.screech?.(0.4); }
+  }
+
+  update(dt, player) {
+    this.t += dt;
+    if (this.dead) {
+      this.deathT += dt;
+      this.gfx.setAlpha(Math.max(0, 1 - (this.deathT - 1.6) * 0.8));
+      this.draw(); return;
+    }
+    if (this.stunT > 0) { this.stunT -= dt; this.draw(); return; }
+    const px = player.x, dx = px - this.x, dist = Math.abs(dx);
+    /* titreşim duyusu — ışığın önemi yok */
+    const moving = Math.abs(player.vx ?? 0) > 0.3;
+    const sense = player.noisy ? 520 : (moving && !player.crouching ? 210 : 70);
+    switch (this.state) {
+      case 'idle':
+        this.vx = Math.sin(this.t * 0.6) * 14;
+        if (this.x < this.minX - 10 || this.x > this.maxX + 10) { this.facing = this.x < this.minX ? 1 : -1; this.vx = this.facing * 80; }
+        if (dist < sense && creatureCanReach(this, player)) { this.facing = dx > 0 ? 1 : -1; this.state = 'rear'; this.rearT = 0; SFAudio.lurkerWhisper?.(); }
+        break;
+      case 'rear':                                   // başını kaldırıp dinler
+        this.vx = 0; this.rearT += dt;
+        this.facing = dx > 0 ? 1 : -1;
+        if (this.rearT > 0.7) { this.state = 'chase'; creatureScare(this, 0.9); }
+        break;
+      case 'chase':
+        this.facing = dx > 0 ? 1 : -1;
+        this.vx = this.facing * (this.chaseSpeed ?? 265 * Math.min(1.25, this.s));
+        if (!creatureCanReach(this, player)) this.vx *= 0.15;
+        if (creatureGiveUp(this, player, dt)) this.state = 'idle';
+        else if (dist < 110 && Math.abs(player.y - this.groundY) < 110) { this.state = 'lunge'; this.lungeT = 0; this._hit = false; }
+        break;
+      case 'lunge':
+        this.lungeT += dt;
+        this.vx = this.lungeT < 0.18 ? -this.facing * 40 : this.facing * 520;
+        if (this.lungeT > 0.18 && !this._hit && Math.abs(px - (this.x + this.facing * 18 * this.s)) < 34 && Math.abs(player.y - this.groundY) < 90) {
+          this._hit = true; this.onStrike?.(1);
+        }
+        if (this.lungeT > 0.55) { this.state = 'recover'; this.lungeT = 0; }
+        break;
+      case 'recover':
+        this.lungeT += dt; this.vx *= 0.85;
+        if (this.lungeT > 0.6) this.state = 'chase';
+        break;
+    }
+    this.x += this.vx * dt;
+    creatureClamp(this);
+    this.draw();
+  }
+
+  draw() {
+    const g = this.gfx, s = this.s, f = this.facing, col = 0x08080b;
+    g.clear();
+    const curl = this.dead ? Math.min(1, this.deathT * 1.5) : 0;
+    const rear = this.state === 'rear' ? Math.min(1, this.rearT * 3) : this.state === 'lunge' ? (this.lungeT < 0.2 ? 1 : 0.4) : 0;
+    /* baş takip eder, halkalar zincir gibi peşinden gelir */
+    const head = this.segs[0];
+    head.x = this.x; head.y = this.groundY - 6 * s - rear * 26 * s;
+    const sp = 9 * s;
+    for (let i = 1; i < this.segs.length; i++) {
+      const a = this.segs[i - 1], b = this.segs[i];
+      const wave = Math.sin(this.t * (Math.abs(this.vx) > 60 ? 16 : 3) - i * 0.9) * 2 * s;
+      const ty = this.groundY - 6 * s - (i < 3 ? rear * (3 - i) * 8 * s : 0) + wave * 0.4;
+      const ang = Math.atan2(ty - a.y, (b.x - a.x) || -f);
+      b.x = a.x + Math.cos(ang) * sp; b.y = a.y + Math.sin(ang) * sp;
+      if (curl > 0) { b.x = lerp(b.x, this.x - f * Math.cos(i * 0.7) * 14 * s, curl); b.y = lerp(b.y, this.groundY - 8 * s - Math.sin(i * 0.7) * 10 * s, curl); }
+      b.y = Math.min(b.y, this.groundY - 4 * s);
+    }
+    /* bacaklar: her halkada iki ince, kıvrık bacak — yürürken dalga gibi */
+    g.lineStyle(1.3 * s, col, 1);
+    const run = Math.abs(this.vx) > 40;
+    for (let i = 1; i < this.segs.length; i++) {
+      const sg = this.segs[i];
+      for (const side of [-1, 1]) {
+        const ph = this.t * (run ? 22 : 4) + i * 1.1 + (side > 0 ? Math.PI : 0);
+        const fx = sg.x + f * Math.sin(ph) * 6 * s * (run ? 1 : 0.3) + side * 2 * s;
+        const kneeY = sg.y - 6 * s;
+        g.beginPath(); g.moveTo(sg.x, sg.y); g.lineTo(sg.x + side * 4 * s + f * 2 * s, kneeY); g.lineTo(fx, this.groundY - Math.max(0, Math.cos(ph)) * 3 * s * (run ? 1 : 0)); g.strokePath();
+      }
+    }
+    /* halkalar — kabuk plakaları, sırtta diken sırası */
+    for (let i = this.segs.length - 1; i >= 0; i--) {
+      const sg = this.segs[i];
+      const r = (i === 0 ? 8 : 7.5 - i * 0.45) * s;
+      g.fillStyle(col, 1); g.fillEllipse(sg.x, sg.y, r * 2.2, r * 1.5);
+      g.fillTriangle(sg.x - 2 * s, sg.y - r * 0.6, sg.x + 2 * s, sg.y - r * 0.6, sg.x - f * 1.5 * s, sg.y - r * 0.6 - (3 + (i % 2) * 2) * s);
+    }
+    /* baş: kör, düz yüz; açılıp kapanan kıskaç çeneler ve uzun duyargalar */
+    const open = this.state === 'lunge' ? 1 : this.state === 'rear' ? 0.6 : 0.15 + Math.sin(this.t * 6) * 0.1;
+    g.lineStyle(2 * s, col, 1);
+    for (const side of [-1, 1]) {
+      const a = (f > 0 ? 0 : Math.PI) + side * (0.25 + open * 0.5);
+      g.beginPath(); g.moveTo(head.x + f * 6 * s, head.y + 1 * s);
+      g.lineTo(head.x + f * 6 * s + Math.cos(a) * 9 * s, head.y + 1 * s + Math.sin(a) * 6 * s);
+      g.lineTo(head.x + f * 6 * s + Math.cos(a - side * 1.2 * f) * 13 * s, head.y + Math.sin(a) * 9 * s);
+      g.strokePath();
+    }
+    g.lineStyle(1 * s, col, 1);
+    for (const k of [0, 1]) {
+      const sw = Math.sin(this.t * 3 + k * 2) * 0.25;
+      g.beginPath(); g.moveTo(head.x + f * 3 * s, head.y - 4 * s);
+      qTo(g, head.x + f * 3 * s, head.y - 4 * s, head.x + f * 14 * s, head.y - (14 + k * 4) * s, head.x + f * (22 + k * 3) * s * Math.cos(sw), head.y - (8 + k * 6) * s, 6);
+      g.strokePath();
+    }
+    /* soluk, kör göz lekeleri */
+    if (!this.dead) {
+      g.fillStyle(0x6e6a60, this.state === 'idle' ? 0.25 : 0.6);
+      g.fillCircle(head.x + f * 4 * s, head.y - 2 * s, 1.2 * s);
+    }
+  }
+}
+
+/* ---------------- WRAITH (fısıltı) ----------------
+   Paçavra bir örtünün içinde yerden yüksekte süzülen gölge. Yavaş ama
+   HİÇ DURMAZ: uçurum, su, duvar dinlemez, peşinden gelir. Kurşun içinden
+   geçer. Tek zaafı ışık: fener konisi üstüne tutulunca donar, titrer;
+   yeterince uzun tutulursa dağılıp yok olur. */
+class Wraith {
+  constructor(scene, cfg) {
+    this.scene = scene;
+    this.type = 'wraith';
+    this.s = cfg.scale ?? 1.1;
+    this.x = cfg.x; this.groundY = cfg.groundY;
+    this.baseY = cfg.groundY - 74 * this.s;
+    this.yy = this.baseY;
+    this.minX = cfg.patrolMinX; this.maxX = cfg.patrolMaxX;
+    this.terr = [cfg.patrolMinX, cfg.patrolMaxX];
+    this.hp = 99; this.maxHp = 99;
+    this.facing = cfg.facing ?? -1;
+    this.vx = 0;
+    this.state = cfg.startChase ? 'hunt' : 'drift';
+    this.t = Math.random() * 10;
+    this.litT = 0; this.hitCD = 0; this.fade = 1;
+    this.dead = false; this.onStrike = null;
+    this.bodyR = 18 * this.s;
+    this.gfx = scene.add.graphics().setDepth(97);
+    this.gfx.setBlendMode(Phaser.BlendModes.NORMAL);
+  }
+  get y() { return this.yy; }
+  destroy() { this.gfx.destroy(); }
+  hearNoise(x, power) {
+    if (this.dead || this.state !== 'drift') return;
+    if (power >= 0.5 && Math.abs(x - this.x) < 600) { this.state = 'hunt'; SFAudio.lurkerWhisper?.(); }
+  }
+  /* kurşun işlemez — sadece bir an sarsılır */
+  takeDamage() { this.flinch = 0.3; }
+
+  /* oyuncunun fener konisi bu noktayı aydınlatıyor mu */
+  _lit() {
+    const sc = this.scene, L = sc.flashLight;
+    if (!L || !L.on || !sc.flashOn) return false;
+    const dx = this.x - L.x, dy = this.yy - L.y;
+    const along = dx * L.facing;
+    if (along < -10 || along > L.r * 1.9) return false;
+    return Math.abs(dy - along * Math.tan(L.angle ?? 0) * L.facing) < 26 + along * 0.55;
+  }
+
+  update(dt, player) {
+    this.t += dt;
+    if (this.flinch > 0) this.flinch -= dt;
+    if (this.dead) {
+      this.fade -= dt * 0.8;
+      this.gfx.setAlpha(Math.max(0, this.fade));
+      this.draw(); return;
+    }
+    if (this.hitCD > 0) this.hitCD -= dt;
+    const px = player.x, py = player.y, dx = px - this.x, dist = Math.hypot(dx, py - this.yy);
+    const lit = this._lit();
+    if (lit) {
+      this.litT += dt;
+      if (this.litT > 0.05 && !this._shriek) { this._shriek = true; SFAudio.screech?.(0.35); }
+      if (this.litT > 2.4) { this.dead = true; this.state = 'dead'; SFAudio.lurkerWhisper?.(); this.scene.cameras.main.shake(200, 0.004); }
+    } else { this.litT = Math.max(0, this.litT - dt * 0.6); this._shriek = false; }
+
+    switch (this.state) {
+      case 'drift':
+        this.vx = Math.sin(this.t * 0.4) * 20;
+        if (Math.abs(dx) < 480 && px > this.minX - 200 && px < this.maxX + 200) { this.state = 'hunt'; creatureScare(this, 0.8); SFAudio.lurkerWhisper?.(); }
+        this.yy = lerp(this.yy, this.baseY + Math.sin(this.t * 1.3) * 6, 1 - Math.exp(-dt * 2));
+        break;
+      case 'hunt': {
+        this.facing = dx > 0 ? 1 : -1;
+        const sp = lit ? 0 : (dist > 500 ? 150 : 92) * Math.min(1.3, this.s);
+        this.vx = lerp(this.vx, this.facing * sp, 1 - Math.exp(-dt * 3));
+        this.yy = lerp(this.yy, py - 18 + Math.sin(this.t * 1.7) * 7, 1 - Math.exp(-dt * 1.4));
+        if (dist < 34 * this.s && this.hitCD <= 0 && !lit) { this.hitCD = 1.3; this.onStrike?.(1); SFAudio.lurkerWhisper?.(); }
+        if (Math.abs(dx) > 1500) { this.state = 'drift'; }
+        break;
+      }
+    }
+    if (lit) this.vx *= 0.2;
+    this.x += this.vx * dt;
+    if (this.state === 'drift') this.x = clamp(this.x, this.minX - 80, this.maxX + 80);
+    this.draw();
+  }
+
+  draw() {
+    const g = this.gfx, s = this.s, f = this.facing;
+    g.clear();
+    const lit = this.litT > 0;
+    const jit = (lit || this.flinch > 0) ? (Math.random() - 0.5) * 4 * s : 0;
+    const x = this.x + jit, y = this.yy;
+    const a = (0.82 + Math.sin(this.t * 2.3) * 0.08) * (lit ? 0.55 + Math.random() * 0.3 : 1) * Math.max(0, 1 - this.litT / 2.6);
+    const col = 0x050507;
+    /* örtü: başlıktan aşağı genişleyen, eteği yırtık şeritlere ayrılan gövde */
+    g.fillStyle(col, a);
+    const lean = clamp(this.vx * 0.06, -10, 10) * s;
+    g.beginPath();
+    g.moveTo(x - 7 * s, y - 26 * s);
+    qTo(g, x - 7 * s, y - 26 * s, x - 18 * s - lean, y, x - 16 * s - lean * 1.5, y + 30 * s, 6);
+    const N = 7;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const bx = lerp(x - 16 * s - lean * 1.5, x + 16 * s - lean * 1.5, u);
+      const len = (16 + ((i * 37) % 11) + Math.sin(this.t * 3 + i * 1.7) * 5) * s;
+      g.lineTo(bx + Math.sin(this.t * 2.2 + i) * 3 * s - lean * 0.6, y + 30 * s + (i % 2 ? len : len * 0.4));
+    }
+    qTo(g, x + 16 * s - lean * 1.5, y + 30 * s, x + 18 * s - lean, y, x + 7 * s, y - 26 * s, 6);
+    g.closePath(); g.fillPath();
+    /* başlık */
+    g.fillEllipse(x + f * 2 * s, y - 28 * s, 18 * s, 22 * s);
+    /* uzanan uzun kollar (yaklaşınca) */
+    if (this.state === 'hunt') {
+      g.lineStyle(2.2 * s, col, a);
+      for (const k of [0, 1]) {
+        const reach = 18 + Math.sin(this.t * 2 + k) * 4;
+        g.beginPath(); g.moveTo(x + f * 6 * s, y - 14 * s + k * 5 * s);
+        qTo(g, x + f * 6 * s, y - 14 * s + k * 5 * s, x + f * 18 * s, y - 20 * s, x + f * (reach + 12) * s, y - 8 * s + k * 6 * s, 5);
+        g.strokePath();
+      }
+    }
+    /* boş yüz: iki soluk nokta */
+    if (!this.dead) {
+      g.fillStyle(0xcfcabc, 0.55 * a);
+      g.fillCircle(x + f * 4 * s, y - 29 * s, 1.3 * s);
+      g.fillCircle(x + f * 8 * s, y - 28.5 * s, 1.1 * s);
+    }
+  }
+}
+
+/* ---------------- BRUTE (koca) ----------------
+   İnsan boyunun bir buçuk katı, kambur, dizlerine inen ağır kollar.
+   Yavaş yürür, görünce böğürüp düz bir hat boyunca HÜCUM eder —
+   hücum sırasında dönemez. Duvara/kenara toslarsa bir süre sersemler.
+   Yakına gelince iki yumruğunu kaldırıp yere vurur. */
+class Brute {
+  constructor(scene, cfg) {
+    this.scene = scene;
+    this.type = 'brute';
+    this.s = cfg.scale ?? 1.5;
+    this.x = cfg.x; this.groundY = cfg.groundY;
+    this.minX = cfg.patrolMinX; this.maxX = cfg.patrolMaxX;
+    this.terr = creatureTerritory(scene, cfg);
+    this.hp = cfg.hp ?? 9; this.maxHp = this.hp;
+    this.chaseSpeed = cfg.chaseSpeed;
+    this.facing = cfg.facing ?? -1;
+    this.vx = 0;
+    this.state = cfg.startChase ? 'chase' : 'wander';
+    this.t = 0; this.chargeT = 0; this.smashT = 0; this.stunT = 0; this.alertT = 0;
+    this.dead = false; this.onStrike = null;
+    this.bodyR = 26 * this.s * 0.8;
+    this.rig = new HumanRig(scene, { scale: this.s, depth: 95, color: 0x070709, variant: 'brute', rimColor: 0x7a6a64, rimStrength: 1.1 });
+    this.rig.stepCallback = () => { SFAudio.monsterStep(); if (Math.abs(this.x - (scene.player?.body.position.x ?? 1e9)) < 500) scene.cameras.main.shake(60, 0.0022); };
+    this.eyeGfx = scene.add.graphics().setDepth(96);
+  }
+  get y() { return this.groundY - this.rig.A.standH * 0.8; }
+  destroy() { this.rig.destroy(); this.eyeGfx.destroy(); }
+  hearNoise(x, power) {
+    if (this.dead || this.state !== 'wander') return;
+    this.facing = x > this.x ? 1 : -1;
+    if (power >= 0.5) { this.state = 'alert'; this.alertT = 0; }
+  }
+  takeDamage(dmg, dir) {
+    if (this.dead) return;
+    this.hp -= dmg * (this.state === 'stun' ? 2 : 1);   // sersemken savunmasız
+    this.rig.hurtT = 0.3;
+    SFAudio.monsterRoar(false);
+    if (this.state === 'wander') { this.state = 'alert'; this.alertT = 0; }
+    if (this.hp <= 0) {
+      this.dead = true; this.state = 'dead';
+      SFAudio.screech?.(0.6); this.scene.cameras.main.shake(500, 0.012);
+      this.rig.startRagdoll(dir * 160, -100, () => this.groundY);
+      this.eyeGfx.clear();
+    }
+  }
+  update(dt, player) {
+    this.t += dt;
+    if (this.dead) { this.rig.update(dt, { x: this.x, y: this.groundY - this.rig.A.standH, mode: 'ragdoll', groundY: this.groundY }); return; }
+    const px = player.x, dx = px - this.x, dist = Math.abs(dx);
+    const vf = visFactor(this.scene, px, player.y);
+    const sense = 360 * vf + (player.noisy ? 140 : 0) - (player.crouching ? 60 : 0);
+    let pose = null;
+    switch (this.state) {
+      case 'wander':
+        this.vx = this.facing * 34 * this.s;
+        if (this.x > this.maxX) this.facing = -1;
+        if (this.x < this.minX) this.facing = 1;
+        if (dist < sense && creatureCanReach(this, player) && Math.sign(dx) === this.facing) { this.state = 'alert'; this.alertT = 0; }
+        break;
+      case 'alert':
+        this.vx = 0; this.facing = dx > 0 ? 1 : -1; this.alertT += dt;
+        pose = 'smashUp';
+        if (this.alertT < dt * 1.5) { SFAudio.monsterRoar(true); creatureScare(this, 1.1); }
+        if (this.alertT > 0.9) { this.state = 'charge'; this.chargeT = 0; }
+        break;
+      case 'charge': {
+        this.chargeT += dt;
+        this.vx = this.facing * (this.chaseSpeed ?? 330);
+        const before = this.x;
+        if (Math.abs(px - this.x) < 46 * this.s && Math.abs(player.y - (this.groundY - 40)) < 100) { this.onStrike?.(2); this.state = 'chase'; }
+        /* bölgenin ucuna (duvar / kenar) tosladı → sersem */
+        if ((this.facing > 0 && before >= this.terr[1] - 4) || (this.facing < 0 && before <= this.terr[0] + 4)) {
+          this.state = 'stun'; this.stunT = 1.8; SFAudio.thud(1); this.scene.cameras.main.shake(300, 0.01);
+        } else if (this.chargeT > 1.4) this.state = 'chase';
+        break;
+      }
+      case 'chase':
+        this.facing = dx > 0 ? 1 : -1;
+        this.vx = this.facing * 95 * this.s * 0.8;
+        if (!creatureCanReach(this, player)) this.vx *= 0.15;
+        if (creatureGiveUp(this, player, dt)) this.state = 'wander';
+        else if (dist < 60 * this.s) { this.state = 'smash'; this.smashT = 0; this._hit = false; }
+        else if (dist > 300 && Math.random() < dt * 0.4) { this.state = 'alert'; this.alertT = 0.5; }
+        break;
+      case 'smash':
+        this.vx = 0; this.smashT += dt;
+        pose = this.smashT < 0.45 ? 'smashUp' : 'smashDown';
+        if (this.smashT > 0.45 && !this._hit) {
+          this._hit = true;
+          SFAudio.thud(1.2); this.scene.cameras.main.shake(320, 0.014);
+          if (Math.abs(px - (this.x + this.facing * 30 * this.s)) < 70 * this.s && Math.abs(player.y - (this.groundY - 30)) < 110) this.onStrike?.(2);
+        }
+        if (this.smashT > 1.1) this.state = 'chase';
+        break;
+      case 'stun':
+        this.vx = 0; this.stunT -= dt;
+        pose = 'smashDown';
+        if (this.stunT <= 0) this.state = 'chase';
+        break;
+    }
+    this.x += this.vx * dt;
+    creatureClamp(this);
+    if (pose) {
+      this.rig.facing = this.facing;
+      this.rig.setPose(pose, this.t);
+      this.rig.update(dt, { x: this.x, y: this.groundY - this.rig.A.standH, vx: 0, vy: 0, grounded: true, facing: this.facing, mode: 'pose', groundY: this.groundY });
+    } else {
+      this.rig.update(dt, { x: this.x, y: this.groundY - this.rig.A.standH, vx: this.vx * 0.75, vy: 0, grounded: true, facing: this.facing, mode: Math.abs(this.vx) > 4 ? 'move' : 'idle', groundY: this.groundY });
+    }
+    const eg = this.eyeGfx; eg.clear();
+    const J = this.rig.joints;
+    if (J.head) {
+      const hot = this.state !== 'wander';
+      eg.fillStyle(0xc8483a, hot ? 0.9 : 0.35);
+      eg.fillCircle(J.head.x + this.facing * 3 * this.s, J.head.y - 0.5 * this.s, 1.1 * this.s);
+      if (this.state === 'stun') {                    // sersemlik: başın üstünde dönen toz
+        eg.fillStyle(0xbab4a8, 0.5);
+        for (let i = 0; i < 3; i++) eg.fillCircle(J.head.x + Math.cos(this.t * 6 + i * 2.1) * 9 * this.s, J.head.y - 10 * this.s + Math.sin(this.t * 6 + i * 2.1) * 3, 1.4 * this.s);
+      }
+    }
+  }
+}
+
 /* ---------------- yaratık fabrikası ---------------- */
 function spawnCreature(scene, cfg) {
   switch (cfg.type) {
     case 'hound': return new Hound(scene, cfg);
     case 'lurker': return new Lurker(scene, cfg);
+    case 'crawler': return new Crawler(scene, cfg);
+    case 'wraith': return new Wraith(scene, cfg);
+    case 'brute': return new Brute(scene, cfg);
     default: return new Stalker(scene, cfg);
   }
 }

@@ -14,9 +14,9 @@ const MISSIONS = {
   12: 'shop', 15: 'car', 18: 'factory',
   23: 'boat', 26: 'colossus', 28: 'shop',
   33: 'flood', 36: 'fire', 38: 'factory',
-  43: 'flood', 45: 'factory', 47: 'fire',
+  43: 'flood', 47: 'fire',
   52: 'boat', 55: 'car', 58: 'colossus',
-  62: 'shop', 64: 'fire', 66: 'car', 68: 'flood',
+  62: 'shop', 66: 'car', 67: 'fire', 68: 'flood',
   72: 'factory', 75: 'flood', 77: 'car',
   83: 'fire', 85: 'colossus', 87: 'bomb',
   92: 'boat', 94: 'colossus',
@@ -58,7 +58,8 @@ function buildMissionLevel(kind, H) {
       x = H.getX();
       L.looseItems.push({ kind: 'crowbar', x: x + 60, y: gy0 - 30 });
       L.tutorial.push({ x: x - 100, key: 'act' });
-      L.crates.push({ x: x + 280, groundY: gy0, contents: ['bandage', 'battery'], needsCrowbar: true });
+      L.crates.push({ x: x + 280, groundY: gy0, contents: ['battery'], needsCrowbar: true, fixed: true });
+      H.stash('backpack', x + 400, gy0, ['bandage']);
       L.tutorial.push({ x: x + 160, key: 'pry' });
       C.flat(440);
       // itilecek kutu — yükseltiye tırman
@@ -81,24 +82,39 @@ function buildMissionLevel(kind, H) {
       break;
 
     case 'fire': {
-      /* YANGIN — alev duvarı soldan ilerler; dur = yan. Kay, atla, koş. */
-      C.flat(560);
-      L.fire = { startX: 420, speed: 105, accel: 4.2, maxSpeed: 205, triggerX: 520 };
-      C.gap(); C.flat(300);
+      /* YANGIN — yıldırım arkandaki ağaca düşer (iç mekânda pano patlar), alev ağaçtan
+         otlara, ottan ağaca yayılır. Rüzgâr sağa: kaç. Kirişlerin altından kay, devrilen
+         gövdelerden atla. Bölümün sonundaki dereye varınca yangın orada durur. */
+      const indoor = ['mine', 'factory'].includes(H.A.biome);
+      const trees = [];
+      const tree = (tx) => trees.push({ x: tx, groundY: H.getGy(), h: indoor ? 70 : 150 + rng() * 70 });
+      C.flat(640);
+      tree(300);
+      L.fire = { triggerX: 560, strikeX: 300, indoor, trees };
+      const grove = (w) => { const x0 = H.getX(); for (let tx = x0 + 60; tx < x0 + w - 40; tx += 130 + rng() * 120) tree(tx); C.flat(w); };
+      grove(420);
+      C.gap(); grove(380);
       let x = H.getX();
-      // yanan kiriş — kayarak geç
       L.platforms.push({ x: x + 120, y: gy0 - 160, w: 110, thick: 114, material: 'wood', look: 'beam', burning: true });
       L.triggers.push({ x: x - 40, text: UI_HINT('crouch'), icon: '⤓' });
-      C.flat(420);
-      C.collapse(); C.flat(260);
-      C.gap(); C.flat(360);
+      grove(460);
+      C.collapse(); grove(320);
+      C.gap(); grove(420);
       x = H.getX();
       L.platforms.push({ x: x + 100, y: gy0 - 160, w: 110, thick: 114, material: 'wood', look: 'beam', burning: true });
-      C.flat(380);
-      C.spikes(); C.flat(320);
-      C.gap(); C.flat(500);
-      L.fire.endX = H.getX() - 260;          // güvenli bölge (su / beton)
-      L.decor.push({ type: 'reed', x: H.getX() - 160, groundY: gy0 });
+      grove(420);
+      C.spikes(); grove(380);
+      C.gap(); grove(360);
+      /* dere: ıslak zemin, yangın burada durur */
+      L.fire.endX = H.getX() - 40;
+      const sx = H.getX();
+      H.endSeg(sx);
+      L.ground.push({ x0: sx - 6, x1: sx + 180, y: gy0 + 40, material: 'earth' });
+      L.water.push({ x0: sx, x1: sx + 174, surfaceY: gy0 + 14, bottomY: gy0 + 40 });
+      H.setX(sx + 174); H.jumpTo(H.getX());
+      L.decor.push({ type: 'reed', x: sx + 40, groundY: gy0 + 14 });
+      L.decor.push({ type: 'reed', x: sx + 230, groundY: gy0 });
+      C.flat(520);
       break;
     }
 
@@ -122,7 +138,7 @@ function buildMissionLevel(kind, H) {
       L.levers.push({ x: corrX0 + 720, groundY: gy0, id: 'lev_flood' });
       L.poweredDoors.push({ x: corrX1, y: gy0, h: 152, id: 'pd_flood' });
       L.leverLinks.lev_flood = { door: 'pd_flood' };
-      L.crates.push({ x: corrX0 + 480, groundY: gy0, contents: ['bandage'], needsCrowbar: true });
+      H.stash('medkit', corrX0 + 480, gy0, ['bandage']);
       L.triggers.push({ x: corrX0 + 620, text: 'Su yükselmeden kolu bul ve çek: çıkış kapağı açılır.', icon: '⇣' });
       H.setX(corrX1 + 20);
       // baca: basamak platformlarla yukarı
@@ -218,7 +234,7 @@ function addBuildingChunks(C, H) {
     const id = 'shop' + (L._shopN = (L._shopN ?? 0) + 1);
     const roofY = gy - 250;
     const code = [0, 0, 0, 0].map(() => Math.floor(rng() * 10));
-    L.crates.push({ x: x - 60, groundY: gy, contents: ['fuse'], needsCrowbar: true });
+    H.stash('toolbox', x - 60, gy, ['fuse']);
     L.fuseBoxes = L.fuseBoxes ?? [];
     L.fuseBoxes.push({ x: x + 6, groundY: gy, door: 'pd_' + id });
     L.decor.push({ type: 'shell', x0: x + 30, x1: x + w, groundY: gy, roofY });
@@ -236,14 +252,14 @@ function addBuildingChunks(C, H) {
     const nx = [x - 160, x + 520, x + 260, x + 650];
     const ny = [gy - 20, gy - 150, null, gy - 70];
     for (let i = 0; i < 4; i++) {
-      if (i === 2) L.crates.push({ x: nx[i], groundY: gy, contents: ['note:' + id + ':' + i], needsCrowbar: true });
+      if (i === 2) H.stash('drawer', nx[i], gy, ['note:' + id + ':' + i]);
       else L.notes.push({ x: nx[i], y: ny[i], lock: id, idx: i });
     }
     L.keypads = L.keypads ?? [];
     L.keypads.push({ x: x + w - 26, groundY: gy, door: 'kp_' + id, code, lock: id });
     L.walls.push({ x: x + w, y0: roofY - 10, y1: gy - 148 });
     L.poweredDoors.push({ x: x + w, y: gy, h: 150, id: 'kp_' + id });
-    L.triggers.push({ x: x - 120, text: 'Kepengi açmak için bir kutudaki sigortayı bul ve sigorta kutusuna tak.', icon: '⚡' });
+    L.triggers.push({ x: x - 120, text: 'Kepenk kilitli. Sigorta kutusu boş.', icon: '⚡' });
     H.setX(x + w + 110);
   };
 
@@ -400,33 +416,63 @@ const Missions = {
     }
   },
 
-  /* ---------------- YANGIN ---------------- */
+  /* ---------------- YANGIN ----------------
+     Gerçekçi yayılım: önce bir ağaca yıldırım düşer (iç mekânda: elektrik
+     panosu kısa devre yapar). Alev ağacı sarar, dibindeki otlara iner, ot
+     ot, ağaçtan ağaca yayılır. Rüzgâr sağa estiği için yangın kaçtığın yöne
+     daha hızlı ilerler; rüzgârın taşıdığı közler arkanda yeni ocaklar açar.
+     Yanan ağaç bir süre sonra devrilir. Islak zemine (dereye) varınca biter. */
   _setupFire(sc, F) {
     const M = sc.mis;
-    M.fire = { ...F, x: F.startX - 520, active: false, cur: F.speed, hurtT: 0, over: false };
-    const f = M.fire;
-    f.light = sc.lights2.addLight({ x: f.x, y: 520, r: 360, type: 'halo', intensity: 1, flicker: 0.12 });
-    f.glow = sc.add.image(f.x, 470, 'softDot').setDepth(109).setScale(9, 14).setTint(0xff6a20).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
-    f.wall = sc.add.graphics().setDepth(110);
+    const f = M.fire = { ...F, active: false, t: 0, hurtT: 0, over: false, cells: [], trees: [], spotT: 0 };
+    const CS = 30;
+    /* yakıt hücreleri: zemin ve platform yüzeyleri boyunca */
+    const surf = [];
+    for (const g of sc.groundSegs) if (g.y <= 640 && g.x1 > 0) surf.push({ x0: Math.max(0, g.x0), x1: g.x1, y: g.y });
+    for (const p of sc.platforms) if (!p.ceiling && !p.burning && p.look !== 'beam' && !p._collapse) surf.push({ x0: p.x, x1: p.x + p.w, y: p.y });
+    for (const s of surf) {
+      const first = f.cells.length;
+      for (let x = s.x0 + CS / 2; x < s.x1; x += CS) {
+        if (f.endX && x > f.endX) break;
+        f.cells.push({ x, y: s.y, st: 0, t: 0, life: 2.6 + Math.random() * 1.6, spread: false, n: [], tree: null });
+      }
+      for (let i = first + 1; i < f.cells.length; i++) { f.cells[i].n.push(i - 1); f.cells[i - 1].n.push(i); }
+    }
+    /* yüzeyler arası geçiş: yakın uçlar birbirini tutuşturur */
+    const ends = f.cells.map((c, i) => ({ c, i })).filter(o => o.c.n.length < 2);
+    for (const a of ends) for (const b of ends) {
+      if (a.i === b.i) continue;
+      if (Math.abs(a.c.x - b.c.x) < 46 && Math.abs(a.c.y - b.c.y) < 60 && !a.c.n.includes(b.i)) a.c.n.push(b.i);
+    }
+    /* ağaçlar (iç mekânda odun yığınları) — büyük, uzun yanan yakıt */
+    const tg = sc.add.graphics().setDepth(62);
+    for (const tr of (F.trees ?? [])) {
+      const cell = f.cells.reduce((best, c, i) => (Math.abs(c.x - tr.x) < 20 && Math.abs(c.y - tr.groundY) < 6 && (best < 0 || Math.abs(c.x - tr.x) < Math.abs(f.cells[best].x - tr.x))) ? i : best, -1);
+      const T = { ...tr, cell, burnT: 0, fallen: false, fallA: 0, fallDir: 1, anchors: [] };
+      if (cell >= 0) { f.cells[cell].tree = T; f.cells[cell].life = 14 + Math.random() * 6; }
+      this._drawFireTree(tg, T, F.indoor);
+      f.trees.push(T);
+    }
+    f.treeG = sc.add.graphics().setDepth(63);
+    f.charG = sc.add.graphics().setDepth(71);
+    f.flameG = sc.add.graphics().setDepth(106).setBlendMode(Phaser.BlendModes.ADD);
     f.flames = sc.add.particles(0, 0, 'softDot', {
-      x: { min: -90, max: 20 }, y: { min: 300, max: 640 }, lifespan: { min: 600, max: 1300 },
-      speedY: { min: -260, max: -80 }, speedX: { min: -10, max: 90 },
-      scale: { start: 1.6, end: 0.15 }, alpha: { start: 0.85, end: 0 },
-      tint: [0xff8a2a, 0xffb04a, 0xe0461c, 0xffd070], blendMode: Phaser.BlendModes.ADD, frequency: 7, emitting: false,
-    }).setDepth(111);
+      lifespan: { min: 380, max: 900 }, speedY: { min: -150, max: -50 }, speedX: { min: -10, max: 70 },
+      scale: { start: 0.9, end: 0.1 }, alpha: { start: 0.75, end: 0 },
+      tint: [0xff8a2a, 0xffb04a, 0xe0461c, 0xffd070], blendMode: Phaser.BlendModes.ADD, emitting: false,
+    }).setDepth(107);
     f.embers = sc.add.particles(0, 0, 'softDot', {
-      x: { min: -40, max: 200 }, y: { min: 300, max: 600 }, lifespan: 2600,
-      speedX: { min: 30, max: 120 }, speedY: { min: -60, max: 10 },
-      scale: { start: 0.07, end: 0 }, alpha: { start: 0.9, end: 0 }, tint: 0xffa040,
-      blendMode: Phaser.BlendModes.ADD, frequency: 60, emitting: false,
+      lifespan: 2800, speedX: { min: 40, max: 150 }, speedY: { min: -90, max: -10 }, gravityY: 20,
+      scale: { start: 0.08, end: 0 }, alpha: { start: 0.95, end: 0 }, tint: 0xffa040,
+      blendMode: Phaser.BlendModes.ADD, emitting: false,
     }).setDepth(112);
     f.smoke = sc.add.particles(0, 0, 'fogPuff', {
-      x: { min: -80, max: 40 }, y: { min: 200, max: 480 }, lifespan: 4200,
-      speedX: { min: 40, max: 110 }, speedY: { min: -30, max: 0 },
-      scale: { start: 0.8, end: 2.4 }, alpha: { start: 0.55, end: 0 }, tint: 0x0a0806,
-      frequency: 140, emitting: false,
+      lifespan: 5200, speedX: { min: 20, max: 90 }, speedY: { min: -46, max: -12 },
+      scale: { start: 0.7, end: 2.6 }, alpha: { start: 0.42, end: 0 }, tint: 0x0b0907, emitting: false,
     }).setDepth(113);
-    // yanan kirişler
+    f.lights = [];
+    for (let i = 0; i < 9; i++) f.lights.push(sc.lights2.addLight({ x: -9999, y: 0, r: 150, type: 'halo', intensity: 0.9, flicker: 0.12, on: false }));
+    /* yanan kirişler (altından kayarak geçilir) */
     for (const p of sc.platforms.filter(p => p.burning)) {
       sc.add.particles(0, 0, 'softDot', {
         x: { min: p.x, max: p.x + p.w }, y: p.y + p.thick - 4, lifespan: 600,
@@ -436,47 +482,228 @@ const Missions = {
       sc.lights2.addLight({ x: p.x + p.w / 2, y: p.y + p.thick, r: 110, type: 'halo', intensity: 0.8, flicker: 0.2 });
     }
   },
-  _updateFire(sc, dt, P) {
-    const f = sc.mis.fire; if (!f || f.over) return;
-    const px = P.body.position.x;
-    if (!f.active) {
-      if (px > f.triggerX) {
-        f.active = true;
-        f.flames.start(); f.embers.start(); f.smoke.start();
-        f.snd = SFAudio.fireLoop?.();
-        sc.cameras.main.shake(500, 0.006);
-        SFAudio.explosion?.(0.5);
-      }
+
+  _drawFireTree(g, T, indoor) {
+    const c = 0x0b0b10, x = T.x, y = T.groundY, h = T.h;
+    g.fillStyle(c, 1);
+    if (indoor) {
+      /* odun / palet yığını */
+      for (let i = 0; i < 4; i++) g.fillRect(x - 34 + (i % 2) * 6, y - 14 - i * 15, 62, 12);
+      g.fillRect(x - 30, y - 70, 10, 70); g.fillRect(x + 20, y - 70, 10, 70);
+      for (let i = 0; i < 6; i++) T.anchors.push({ x: x - 28 + i * 11, y: y - 18 - (i % 3) * 18 });
       return;
     }
-    f.cur = Math.min(f.maxSpeed, f.cur + f.accel * dt);
-    f.x += f.cur * dt;
-    if (f.x < px - 430) f.x = px - 430;                      // hep ekranın kenarında — baskı sürer
-    const gap = px - f.x;
-    f.snd?.set(clamp(1 - gap / 700, 0.15, 1));
-    sc.fx.setHeat?.(clamp(1 - gap / 520, 0, 1));
-    f.light.x = f.x; f.light.y = P.body.position.y - 60;
-    f.glow.setPosition(f.x - 60, P.body.position.y - 80).setAlpha(0.75 + Math.sin(sc.time.now * 0.02) * 0.08);
-    f.flames.setPosition(f.x, 0); f.embers.setPosition(f.x, 0); f.smoke.setPosition(f.x, 0);
-    const g = f.wall; g.clear();
-    g.fillStyle(0x2a0c04, 0.94); g.fillRect(f.x - 2000, -200, 1960, 1200);
-    // dalgalı alev cephesi
-    g.fillStyle(0xff7a28, 0.5);
-    g.beginPath(); g.moveTo(f.x - 60, -200);
-    for (let yy = -200; yy <= 1000; yy += 40) g.lineTo(f.x - 30 + Math.sin(yy * 0.03 + sc.time.now * 0.008) * 22, yy);
-    g.lineTo(f.x - 60, 1000); g.closePath(); g.fillPath();
-    if (gap < 46) {
-      f.hurtT -= dt;
-      if (f.hurtT <= 0) { f.hurtT = 0.45; sc.damagePlayer(1, 1); }
-      if (gap < 0) sc.killPlayer(1);
+    g.beginPath();
+    g.moveTo(x - 10, y); qTo(g, x - 10, y, x - 5, y - h * 0.5, x - 3, y - h);
+    g.lineTo(x + 3, y - h); qTo(g, x + 3, y - h, x + 7, y - h * 0.45, x + 12, y);
+    g.closePath(); g.fillPath();
+    const br = [[-0.72, -1, 0.42], [-0.6, 1, 0.36], [-0.85, 1, 0.3], [-0.9, -1, 0.26]];
+    for (const [t, side, len] of br) {
+      const bx = x, by = y + h * t, ex = bx + side * h * len, ey = by - h * len * 0.55;
+      g.lineStyle(4 - len * 4, c, 1);
+      g.beginPath(); g.moveTo(bx, by); qTo(g, bx, by, bx + side * h * len * 0.4, by - h * len * 0.4, ex, ey); g.strokePath();
+      T.anchors.push({ x: (bx + ex) / 2, y: (by + ey) / 2 - 4 }, { x: ex, y: ey });
     }
-    if (f.endX && px > f.endX) {
-      f.over = true;
-      f.flames.stop(); f.embers.stop(); f.smoke.stop();
-      f.snd?.stop();
-      sc.tweens.add({ targets: f.glow, alpha: 0, duration: 2000 });
-      sc.fx.setHeat?.(0);
+    T.anchors.push({ x, y: y - h * 0.5 }, { x, y: y - h * 0.8 }, { x, y: y - h });
+  },
+
+  _igniteCell(f, i) {
+    const c = f.cells[i];
+    if (!c || c.st !== 0) return;
+    if (f.endX && c.x > f.endX) return;
+    c.st = 1; c.t = 0; c.spread = false;
+    const base = lerp(0.34, 0.16, clamp(f.t / 45, 0, 1));
+    c.delay = base * (0.75 + Math.random() * 0.5);
+    if (c.tree) c.tree.burning = true;
+  },
+
+  _strike(sc, f) {
+    const target = f.trees.find(t => Math.abs(t.x - f.strikeX) < 60) ?? f.trees[0];
+    if (!target) return;
+    const fx = sc.fx;
+    if (f.indoor) {
+      /* kısa devre: kıvılcım yağmuru + patlama */
+      SFAudio.explosion?.(0.45); SFAudio.generatorStart?.();
+      const sp = sc.add.particles(target.x, target.groundY - 90, 'softDot', {
+        speed: { min: 120, max: 340 }, lifespan: 700, gravityY: 700, scale: { start: 0.12, end: 0 },
+        tint: 0xfff0b0, blendMode: Phaser.BlendModes.ADD, emitting: false,
+      }).setDepth(110);
+      sp.explode(40);
+      sc.time.delayedCall(900, () => sp.destroy());
+    } else {
+      /* yıldırım: gökten ağacın tepesine kırık bir çizgi, ekran beyaz çakar */
+      SFAudio.thunder?.();
+      sc.lights2.flash = 1;
+      const g = sc.add.graphics().setDepth(115).setBlendMode(Phaser.BlendModes.ADD);
+      let bx = target.x + (Math.random() - 0.5) * 60, by = target.groundY - 900;
+      const pts = [[bx, by]];
+      while (by < target.groundY - target.h) { by += 40 + Math.random() * 50; bx += (Math.random() - 0.5) * 50; pts.push([bx, by]); }
+      pts.push([target.x, target.groundY - target.h]);
+      for (const [w, a] of [[7, 0.25], [2.5, 1]]) {
+        g.lineStyle(w, 0xeef2ff, a); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+        for (const p of pts) g.lineTo(p[0], p[1]); g.strokePath();
+      }
+      sc.tweens.add({ targets: g, alpha: 0, duration: 380, delay: 90, onComplete: () => g.destroy() });
+      fx.flash?.setFillStyle?.(0xeef2ff);
+      fx.flash?.setAlpha?.(0.85);
+      sc.tweens.add({ targets: fx.flash, alpha: 0, duration: 700 });
     }
+    sc.cameras.main.shake(600, 0.012);
+    try { navigator.vibrate?.([80, 30, 160]); } catch (e) {}
+    if (target.cell >= 0) this._igniteCell(f, target.cell);
+    f.snd = SFAudio.fireLoop?.();
+  },
+
+  _updateFire(sc, dt, P) {
+    const f = sc.mis.fire; if (!f || f.over) return;
+    const px = P.body.position.x, py = P.body.position.y;
+    if (!f.active) {
+      if (px > f.triggerX) { f.active = true; this._strike(sc, f); }
+      return;
+    }
+    f.t += dt;
+    const cam = sc.cameras.main;
+    const vx0 = cam.scrollX - 120, vx1 = cam.scrollX + cam.width / cam.zoom + cam.width + 120;
+    let front = -1e9, nearest = 1e9, burning = 0;
+    const lit = [];
+    for (let i = 0; i < f.cells.length; i++) {
+      const c = f.cells[i];
+      if (c.st !== 1) continue;
+      c.t += dt;
+      burning++;
+      if (!c.spread && c.t > c.delay) {
+        c.spread = true;
+        for (const j of c.n) {
+          const nb = f.cells[j];
+          if (nb.st !== 0) continue;
+          /* rüzgâr sağa: sağdaki hücre hemen, soldaki gecikmeli tutuşur */
+          if (nb.x >= c.x) this._igniteCell(f, j);
+          else sc.time.delayedCall(c.delay * 1600, () => this._igniteCell(f, j));
+        }
+      }
+      if (c.t > c.life) {
+        c.st = 2;
+        if (c.tree) c.tree.burning = false;
+        f.charG.fillStyle(0x050403, 1); f.charG.fillRect(c.x - 15, c.y - 2, 30, 4);
+        f.charG.fillStyle(0x6a2a10, 0.5); f.charG.fillCircle(c.x - 6 + Math.random() * 12, c.y - 1, 1.4);
+        continue;
+      }
+      if (c.x > front) front = c.x;
+      const dpx = Math.abs(c.x - px);
+      if (Math.abs(c.y - (py + P.hStand / 2)) < 40 && dpx < nearest) nearest = dpx;
+      if (c.x > vx0 && c.x < vx1) lit.push(c);
+    }
+    /* ağaçlar: yanarken uzun alev; bir süre sonra devrilir */
+    for (const T of f.trees) {
+      if (!T.burning && !T.falling) continue;
+      T.burnT += dt;
+      if (!f.indoor && !T.fallen && !T.falling && T.burnT > 6 && Math.random() < dt * 0.4 && T.x < px + 60 && T.x > px - 420) {
+        T.falling = true; T.fallDir = 1; SFAudio.leverCreak?.(); SFAudio.doorCreak();
+      }
+      if (T.falling) {
+        T.fallA = Math.min(Math.PI / 2, T.fallA + dt * (0.4 + T.fallA * 2.2));
+        if (T.fallA >= Math.PI / 2 && !T.fallen) {
+          T.fallen = true; T.falling = false; T.logT = 8;
+          SFAudio.thud(1.2); sc.cameras.main.shake(380, 0.012);
+          const lx = T.x + T.fallDir * T.h * 0.55;
+          T.log = { x0: lx - T.h * 0.45, x1: lx + T.h * 0.45, y: T.groundY };
+          T.logBody = sc.matter.add.rectangle(lx, T.groundY - 12, T.h * 0.9, 24, { isStatic: true, label: 'wall', collisionFilter: { category: CAT.WORLD, mask: 0xFFFF } });
+          /* düşen gövde altında kalan oyuncu */
+          if (px > T.log.x0 && px < T.log.x1 && py > T.groundY - 100) sc.damagePlayer(2, 1);
+          for (const c of f.cells) if (c.x > T.log.x0 && c.x < T.log.x1 && Math.abs(c.y - T.groundY) < 6) this._igniteCell(f, f.cells.indexOf(c));
+        }
+      }
+      if (T.fallen && T.logT > 0) {
+        T.logT -= dt;
+        if (T.logT <= 0 && T.logBody) { sc.matter.world.remove(T.logBody); T.logBody = null; }
+      }
+    }
+    /* rüzgârın taşıdığı közler: cephe çok geride kaldıysa arkanda yeni ocak açar
+       (oyuncunun önüne asla düşmez — kaçış yolu açık kalır) */
+    f.spotT -= dt;
+    if (px - front > 620 && f.spotT <= 0) {
+      f.spotT = 1.1;
+      const cand = [];
+      for (let i = 0; i < f.cells.length; i++) { const c = f.cells[i]; if (c.st === 0 && c.x > front + 120 && c.x < px - 330) cand.push(i); }
+      if (cand.length) this._igniteCell(f, cand[Math.floor(Math.random() * cand.length)]);
+    }
+    /* hasar: yanan hücrenin üstünde / devrilmiş yanan kütüğe değerek */
+    f.hurtT -= dt;
+    const feet = py + P.hStand / 2;
+    let inFire = nearest < 16;
+    for (const T of f.trees) if (T.fallen && T.logT > 0 && px > T.log.x0 && px < T.log.x1 && feet > T.groundY - 30) inFire = true;
+    if (inFire && f.hurtT <= 0 && !P.hang && !P.mantle) { f.hurtT = 0.55; sc.damagePlayer(1, 1); }
+    const heat = clamp(1 - nearest / 360, 0, 1);
+    f.snd?.set(clamp(0.25 + heat * 0.75, 0.2, 1));
+    sc.fx.setHeat?.(heat * 0.9);
+    /* çizim: görünür yanan hücrelerde titreşen, kıvrık alev dilleri (dış kızıl, orta
+       turuncu, iç sarı); her hücre kendi fazında salınır, cephe testere gibi görünmez */
+    const g = f.flameG; g.clear();
+    const now = sc.time.now * 0.012;
+    const tongue = (x, y, w, h, sway, col, a) => {
+      g.fillStyle(col, a);
+      g.beginPath(); g.moveTo(x - w / 2, y);
+      qTo(g, x - w / 2, y, x - w * 0.3 + sway * 0.3, y - h * 0.55, x + sway, y - h, 6);
+      qTo(g, x + sway, y - h, x + w * 0.35 + sway * 0.2, y - h * 0.45, x + w / 2, y, 6);
+      g.closePath(); g.fillPath();
+    };
+    for (const c of lit) {
+      const k = Math.min(1, c.t / 0.5) * (c.t > c.life - 0.8 ? Math.max(0, (c.life - c.t) / 0.8) : 1);
+      if (k <= 0.02) continue;
+      const ph = c.x * 0.37;
+      const hash = (Math.sin(c.x * 12.9898) * 43758.5453) % 1;
+      const big = 0.55 + Math.abs(hash) * 0.9;                    // hücreden hücreye boy farkı
+      const hh = (20 + Math.sin(now + ph) * 7 + Math.sin(now * 1.9 + ph * 1.7) * 5) * k * big;
+      const sw = Math.sin(now * 1.3 + ph) * 5 + 3;
+      const ox = hash * 10;
+      tongue(c.x + ox, c.y + 1, 30 + big * 14, hh * 1.25, sw, 0xc8381a, 0.32);
+      tongue(c.x + ox + 3, c.y + 1, 18 + big * 6, hh * 0.85, sw * 0.8, 0xff8a2a, 0.42);
+      if (big > 0.9) tongue(c.x + ox + 2, c.y + 1, 10, hh * 0.5, sw * 0.5, 0xffd070, 0.5);
+    }
+    const tg = f.treeG; tg.clear();
+    for (const T of f.trees) {
+      if (T.falling || T.fallen) {
+        /* devrilen gövde: tabandan dönen kara çizgi + alev */
+        const a = T.fallA * T.fallDir;
+        const tx = T.x + Math.sin(a) * T.h, ty = T.groundY - Math.cos(a) * T.h;
+        tg.lineStyle(14, 0x0b0b10, 1); tg.beginPath(); tg.moveTo(T.x, T.groundY); tg.lineTo(tx, ty); tg.strokePath();
+        if (!T.fallen || T.logT > 0) {
+          for (let k = 0; k < 6; k++) {
+            const u = k / 5, ax = lerp(T.x, tx, u), ay = lerp(T.groundY, ty, u);
+            tongue(ax, ay, 24, 30 + Math.sin(now * 1.4 + k) * 9, Math.sin(now + k) * 5, 0xff8a2a, 0.5);
+          }
+        }
+        continue;
+      }
+      if (!T.burning) continue;
+      const k = Math.min(1, T.burnT / 2.5);
+      for (const an of T.anchors.slice(0, Math.ceil(T.anchors.length * k))) {
+        const hh = 26 + Math.sin(now + an.x * 0.1) * 9;
+        const sw = Math.sin(now * 1.2 + an.y) * 6 + 4;
+        tongue(an.x, an.y + 6, 26, hh, sw, 0xc8381a, 0.45);
+        tongue(an.x + 2, an.y + 5, 15, hh * 0.65, sw * 0.7, 0xffb04a, 0.5);
+        if (Math.random() < dt * 3) f.embers.emitParticleAt(an.x, an.y, 1);
+      }
+    }
+    /* parçacıklar + ışık havuzu: görünür alevlere dağıtılır */
+    if (lit.length) {
+      for (let k = 0; k < 2; k++) { const c = lit[Math.floor(Math.random() * lit.length)]; f.flames.emitParticleAt(c.x + (Math.random() - 0.5) * 20, c.y - 4, 1); }
+      if (Math.random() < dt * 8) { const c = lit[Math.floor(Math.random() * lit.length)]; f.embers.emitParticleAt(c.x, c.y - 10, 1); }
+      if (Math.random() < dt * 5) { const c = lit[Math.floor(Math.random() * lit.length)]; f.smoke.emitParticleAt(c.x, c.y - 40, 1); }
+    }
+    lit.sort((a, b) => a.x - b.x);
+    f.lights.forEach((l, i) => {
+      const c = lit[Math.floor((i + 0.5) * lit.length / f.lights.length)];
+      l.on = !!c; if (c) { l.x = c.x; l.y = c.y - 30; }
+    });
+    if (f.endX && burning === 0 && f.t > 5) this._fireOver(sc, f);
+    if (f.endX && px > f.endX + 120 && !f.safeHint) { f.safeHint = true; SFAudio.playHopeMotif(); }
+  },
+  _fireOver(sc, f) {
+    f.over = true;
+    f.snd?.stop();
+    sc.fx.setHeat?.(0);
+    for (const l of f.lights) l.on = false;
   },
 
   /* ---------------- SU BASKINI ---------------- */
@@ -832,7 +1059,7 @@ const Missions = {
         });
         return true;
       }
-      case 'm-fuse-no': SFAudio.thud(0.2); UI.hint('Sigorta gerekli. Yakındaki kutuları aç.', 2200, '⚡'); return true;
+      case 'm-fuse-no': SFAudio.thud(0.2); UI.hint('Sigorta yuvası boş.', 2000, '⚡'); return true;
       case 'm-note': t.obj.read = true; t.obj.g.destroy(); t.obj.glow.destroy(); this.revealDigit(sc, t.obj.lock, t.obj.idx); return true;
       case 'm-keypad': UI.openKeypad(sc, t.obj); return true;
       case 'm-simon-start': this._simonPlay(sc, t.obj); return true;
@@ -854,7 +1081,7 @@ const Missions = {
 
   collect(sc, kind, item) {
     switch (kind) {
-      case 'fuse': sc.inv.fuse = true; UI.hint('Sigortayı kepengin yanındaki kutuya tak.', 2200, '⚡'); return true;
+      case 'fuse': sc.inv.fuse = true; return true;
       case 'note': { const [lock, idx] = (item?.meta ?? '').split(':'); this.revealDigit(sc, lock, +idx); return true; }
       case 'cutters': sc.inv.cutters = true; return true;
       case 'manual': {

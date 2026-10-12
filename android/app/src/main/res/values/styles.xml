@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme: dark, no action bar, game draws under the cutout. -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/sf_black</item>
+        <item name="colorPrimaryDark">@color/sf_black</item>
+        <item name="colorAccent">@color/sf_bone</item>
+        <item name="android:windowBackground">@color/sf_black</item>
+        <item name="android:statusBarColor">@color/sf_black</item>
+        <item name="android:navigationBarColor">@color/sf_black</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p" xmlns:tools="http://schemas.android.com/tools">shortEdges</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="AppTheme">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:background">@null</item>
+    </style>
+
+    <!-- Android 12+ system splash: black background with the app mark -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/sf_black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

@@ -10,11 +10,9 @@
 <link rel="icon" href="data:,">
 <title>SHADOW FALL</title>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/fonts.css">
 
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script src="vendor/phaser.min.js"></script>
 
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -176,18 +174,6 @@ body.cine #hint-card { opacity:0 !important; }
   display:none; z-index:21; overflow:hidden;
 }
 #breath-fill { height:100%; background:rgba(150,190,214,0.8); transition:width 0.2s linear; }
-/* boss barı */
-#boss-bar {
-  position:fixed; top:calc(14px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
-  width:min(420px,60vw); display:none; z-index:21; pointer-events:none; text-align:center;
-}
-#boss-bar .boss-name {
-  font-family:'Cormorant Garamond',serif; font-size:14px; letter-spacing:0.4em;
-  color:#C9A295; margin-bottom:5px;
-}
-#boss-bar .boss-track { height:7px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden; border:1px solid rgba(214,160,140,0.25); }
-#boss-bar .boss-fill { height:100%; width:100%; background:rgba(190,120,100,0.8); transition:width 0.3s; }
-
 #pause-btn {
   position:fixed; top:calc(10px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right));
   width:40px; height:40px; border-radius:50%;
@@ -250,6 +236,15 @@ body.cine #hint-card { opacity:0 !important; }
   position:absolute; bottom:calc(14px + env(safe-area-inset-bottom));
   font-size:9px; letter-spacing:0.3em; color:#3A3833;
 }
+#menu h1 { white-space:nowrap; }
+/* yatay telefon (kısa ekran): menü tek ekrana sığsın */
+@media (max-height:520px) {
+  #menu h1 { font-size:clamp(30px,7.5vh,56px); letter-spacing:0.32em; margin-left:0.32em; }
+  #menu .sub { margin:2px 0 18px; font-size:13px; }
+  .text-btn { padding:9px 22px; font-size:13px; }
+  .panel-title { margin-bottom:14px; font-size:24px; }
+  #privacy-body { max-height:52vh; }
+}
 @keyframes menuBreathe {
   0%,100% { text-shadow:0 0 50px rgba(200,196,188,0.08); opacity:0.92; }
   50%     { text-shadow:0 0 90px rgba(200,196,188,0.22); opacity:1; }
@@ -276,7 +271,16 @@ body.cine #hint-card { opacity:0 !important; }
 .lv-btn:hover { background:rgba(255,255,255,0.1); color:#E8E4DC; }
 .lv-btn.locked { opacity:0.2; cursor:default; }
 .lv-btn.locked:hover { background:rgba(255,255,255,0.04); color:#A8A49C; }
-.lv-btn.bosslv { border-color:rgba(214,160,140,0.4); color:#C9A295; }
+.lv-btn.bldlv { border-color:rgba(200,190,160,0.4); color:#CFC5A8; }
+
+/* ---------- gizlilik ---------- */
+#privacy-body {
+  width:min(560px,86vw); max-height:58vh; overflow-y:auto; margin-bottom:22px; padding:0 6px;
+  font-size:13px; line-height:1.65; color:#A8A49C; font-weight:300; letter-spacing:0.02em;
+}
+#privacy-body p { margin:0 0 12px; }
+#privacy-body b { color:#D6D2CA; font-weight:500; }
+#privacy-body .dimtxt { color:#5A5750; font-size:11px; letter-spacing:0.12em; }
 
 /* ---------- options ---------- */
 #options-body { display:flex; flex-direction:column; gap:18px; width:min(360px,84vw); margin-bottom:28px; }
@@ -375,12 +379,6 @@ body.cine #hint-card { opacity:0 !important; }
 <!-- nefes -->
 <div id="breath-bar"><div id="breath-fill"></div></div>
 
-<!-- boss -->
-<div id="boss-bar">
-  <div class="boss-name"></div>
-  <div class="boss-track"><div class="boss-fill"></div></div>
-</div>
-
 <button id="pause-btn" aria-label="Duraklat">▮▮</button>
 <button id="skip-btn" aria-label="Sahneyi atla">ATLA<span class="skip-ico">▸▸</span></button>
 
@@ -427,9 +425,10 @@ body.cine #hint-card { opacity:0 !important; }
       <button class="text-btn" id="m-newgame">YENİ OYUN</button>
       <button class="text-btn" id="m-chapters">BÖLÜMLER</button>
       <button class="text-btn" id="m-options">AYARLAR</button>
+      <button class="text-btn dim" id="m-privacy">GİZLİLİK</button>
     </div>
   </div>
-  <div class="version">SHADOW FALL · v6.0 · 100 BÖLÜM</div>
+  <div class="version">SHADOW FALL · v1.0.0 · 100 BÖLÜM</div>
 </div>
 
 <!-- chapter select -->
@@ -448,6 +447,20 @@ body.cine #hint-card { opacity:0 !important; }
     <div class="opt-row"><label>FİLM GRENİ</label><input type="range" id="opt-grain" min="0" max="100" value="55"></div>
   </div>
   <button class="text-btn dim" id="opt-back">GERİ</button>
+</div>
+
+<!-- gizlilik / KVKK -->
+<div class="overlay" id="privacy-panel">
+  <div class="panel-title">GİZLİLİK</div>
+  <div id="privacy-body">
+    <p><b>Veri Sorumlusu:</b> Ahmet Yaz · www.Yazify.net · yzz_software@hotmail.com</p>
+    <p>Shadow Fall çevrimdışı oynanan, tek oyunculu bir oyundur. Hesap, reklam, analiz ya da takip aracı yoktur; hiçbir kişisel veri toplanmaz ve hiçbir yere gönderilmez.</p>
+    <p>Yalnızca ulaştığın bölüm, envanterin ve ayarların bu cihazda saklanır. Uygulama silinince bu kayıt da silinir. Android yedeklemesi açıksa kayıt Google hesabına yedeklenebilir; geliştirici bu yedeğe erişemez.</p>
+    <p>İnternet izni oyunun üzerine kurulu web görünümünün teknik gereğidir; oyun veri göndermez. Titreşim izni yalnız dokunsal geri bildirim içindir.</p>
+    <p>6698 sayılı KVKK m.11 kapsamındaki tüm haklarına ilişkin taleplerini yzz_software@hotmail.com adresine iletebilirsin; başvurular en geç 30 gün içinde ücretsiz yanıtlanır.</p>
+    <p class="dimtxt">Tam metin: www.Yazify.net · Sürüm 1.0 · 12.10.2026</p>
+  </div>
+  <button class="text-btn dim" id="privacy-back">GERİ</button>
 </div>
 
 <!-- pause -->
@@ -483,12 +496,15 @@ body.cine #hint-card { opacity:0 !important; }
 </div>
 
 <script src="js/audio.js"></script>
+<script src="js/music.js"></script>
 <script src="js/atmosphere.js"></script>
 <script src="js/human.js"></script>
 <script src="js/physics.js"></script>
 <script src="js/items.js"></script>
 <script src="js/creatures.js"></script>
 <script src="js/story.js"></script>
+<script src="js/puzzles.js"></script>
+<script src="js/buildings.js"></script>
 <script src="js/levelgen.js"></script>
 <script src="js/missions.js"></script>
 <script src="js/main.js"></script>

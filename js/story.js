@@ -28,13 +28,6 @@ const ACT_NAMES = [
   ['GEÇİT', 'ŞAFAK'],
 ];
 
-/* ---- boss isimleri (perde finalleri) ---- */
-const BOSS_NAMES = {
-  10: 'KÖK CANAVARI', 20: 'BARİKAT', 30: 'BATAKLIK SÜRÜSÜ', 40: 'KÖR SÜRÜNGEN',
-  50: 'PRES BEKÇİLERİ', 60: 'NEHİR ALFASI', 70: 'KÜL PUSUSU', 80: 'KALE MUHAFIZI',
-  90: 'SESSİZ DEV', 100: 'GEÇİT BEKÇİSİ',
-};
-
 /* kontrol ipuçları — dokunmatikte jest, klavyede tuş anlatır */
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 function UI_HINT(k) {
@@ -51,6 +44,10 @@ function UI_HINT(k) {
     edge:   ['Yürürken uçurum kenarında durursun. Geçmek için zıpla.', 'Yürürken uçurum kenarında durursun. Geçmek için [W].'],
     stealth:['Eğil, siperin arkasında kal, ışıkta durma. Koşmak ses çıkarır.', '[S] eğil, siperin arkasında kal, ışıkta durma. Koşmak ses çıkarır.'],
     dark:   ['Fenersiz göremezsin — ama fener açıkken düşmanlar da seni görür.', 'Fenersiz göremezsin — ama fener açıkken [F] düşmanlar da seni görür.'],
+    stairs: ['Merdivenin dibinde yukarı kaydır: çık. Üstten yürü: in.', 'Merdivenin dibinde [W]: çık. Üstten yürü: in.'],
+    ladder: ['El merdiveninde yukarı-aşağı kaydır: tırman.', 'El merdiveninde [W] / [S]: tırman.'],
+    wraith: ['Süzülen gölgeye kurşun işlemez. Feneri üstüne tut.', 'Süzülen gölgeye kurşun işlemez. Feneri [F] üstüne tut.'],
+    crawler:['Kör sürüngen titreşimi duyar. Eğilerek, yavaşça geç.', 'Kör sürüngen titreşimi duyar. [S] eğilerek, yavaşça geç.'],
   };
   return (T[k] ?? ['', ''])[IS_TOUCH ? 0 : 1];
 }
