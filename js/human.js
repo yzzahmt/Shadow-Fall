@@ -29,9 +29,72 @@ function solveIK2(rootX, rootY, targetX, targetY, l1, l2, bendDir) {
   };
 }
 
+/* WebGL ön-işleme glow'u — siluetin kenarına soluk ay ışığı. Canvas renderer'da
+   veya düşük performans modunda sessizce atlanır. */
+function addRimGlow(obj, color, strength = 1.4) {
+  try {
+    if (window.SF_LOWFX || !obj.postFX) return null;
+    return obj.postFX.addGlow(color, strength, 0, false, 0.1, 6);
+  } catch (e) { return null; }
+}
+
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+
+/* ============================================================
+   İNSAN YÜRÜYÜŞ VERİSİ — klinik yürüyüş analizinden (Winter; Novacheck)
+   alınmış normatif sagital eklem açıları (derece), döngü %0 = topuk vuruşu.
+   kalça: + fleksiyon (uyluk öne) · diz: + fleksiyon · bilek: + dorsifleksiyon
+   ============================================================ */
+const GAIT = {
+  walk: {
+    toeOff: 0.62,
+    hip:   [[0, 30], [10, 27], [20, 18], [30, 9], [40, 1], [50, -7], [55, -10], [60, -7], [65, 2], [70, 13], [75, 21], [80, 27], [85, 31], [90, 32], [95, 31]],
+    knee:  [[0, 3], [5, 10], [10, 16], [15, 18], [20, 16], [30, 8], [40, 4], [45, 5], [50, 9], [55, 18], [60, 35], [65, 50], [70, 60], [73, 62], [78, 55], [85, 35], [90, 16], [95, 5]],
+    ankle: [[0, 0], [5, -5], [10, -2], [20, 4], [30, 7], [40, 10], [45, 9], [50, 4], [55, -6], [60, -16], [65, -18], [70, -10], [75, -3], [80, 0], [90, 1]],
+  },
+  run: {
+    toeOff: 0.36,
+    hip:   [[0, 32], [10, 26], [20, 14], [30, 0], [38, -8], [45, -10], [55, 2], [65, 25], [75, 40], [85, 42], [95, 36]],
+    knee:  [[0, 18], [8, 32], [15, 38], [25, 28], [35, 15], [40, 22], [50, 55], [60, 90], [68, 100], [75, 95], [85, 60], [95, 25]],
+    ankle: [[0, 2], [8, 14], [15, 18], [25, 8], [35, -18], [45, -22], [55, -10], [65, 4], [80, 6], [92, 3]],
+  },
+};
+/* periyodik Catmull-Rom örnekleme (0..1) */
+function gaitSample(tbl, u) {
+  u = ((u % 1) + 1) % 1;
+  const n = tbl.length, x = u * 100;
+  let i = n - 1;
+  for (let k = 0; k < n; k++) { if (tbl[k][0] > x) { i = k - 1; break; } }
+  const at = (k) => tbl[((k % n) + n) % n];
+  const p1 = at(i), p2 = at(i + 1);
+  const x1 = i < 0 ? p1[0] - 100 : p1[0];
+  let x2 = p2[0]; if (x2 <= x1) x2 += 100;
+  let xx = x; if (xx < x1) xx += 100;
+  const t = (xx - x1) / (x2 - x1);
+  const p0 = at(i - 1)[1], p3 = at(i + 2)[1];
+  const a = p1[1], b = p2[1];
+  const t2 = t * t, t3 = t2 * t;
+  return 0.5 * ((2 * a) + (-p0 + b) * t + (2 * p0 - 5 * a + 4 * b - p3) * t2 + (-p0 + 3 * a - 3 * b + p3) * t3);
+}
+/* birleşik faz u (0..1, D = destek oranı) → eğrinin kendi fazı (topuk vuruşu ve parmak itişi hizalanır) */
+function gaitWarp(u, D, toeOff) {
+  u = ((u % 1) + 1) % 1;
+  return u < D ? (u / D) * toeOff : toeOff + ((u - D) / (1 - D)) * (1 - toeOff);
+}
+/* bir bacağın açıları (radyan) — yürüyüş/koşu karışımı + genlik ölçeği */
+function gaitAngles(u, runF, D, amp) {
+  const D2R = Math.PI / 180;
+  const pw = gaitWarp(u, D, GAIT.walk.toeOff), pr = gaitWarp(u, D, GAIT.run.toeOff);
+  const mix = (k) => lerp(gaitSample(GAIT.walk[k], pw), gaitSample(GAIT.run[k], pr), runF);
+  const hipMean = lerp(11, 16, runF);
+  return {
+    hip: (hipMean + (mix('hip') - hipMean) * amp) * D2R,
+    knee: Math.max(0, mix('knee') * lerp(0.75, 1, amp)) * D2R,
+    ankle: mix('ankle') * amp * D2R,
+  };
+}
 
 class HumanRig {
   /** opts: { scale, color, variant: 'kai'|'maria'|'soldier', depth } */
@@ -41,12 +104,24 @@ class HumanRig {
     this.color = opts.color ?? 0x0b0b10;
     this.variant = opts.variant ?? 'kai';
     this.gfx = scene.add.graphics().setDepth(opts.depth ?? 100);
+    /* kenar ışığı (rim light): koyu siluet koyu arka plandan ayrışsın */
+    if (opts.rim !== false) addRimGlow(this.gfx, opts.rimColor ?? 0x8a90a4, opts.rimStrength ?? 1.4);
 
     const s = this.s;
     const fem = this.variant === 'maria';
     /* gerçek insan oranları — bacaklar pelvis yüksekliğine ulaşır,
        ayaklar gerçekten yere basar (eski rig'de bacaklar kısaydı) */
-    this.A = fem ? {
+    const lurk = this.variant === 'lurker';
+    this.A = lurk ? {
+      /* lurker: insan değil — fazla uzun bacak/kol, dar gövde, küçük kafa */
+      legUp: 31 * s, legLo: 31 * s,
+      armUp: 23 * s, armLo: 23 * s,
+      torso: 31 * s,
+      headR: 5.0 * s,
+      hipW: 4.6 * s, shW: 6.4 * s,
+      waist: 0.62,
+      standH: 61 * s,
+    } : fem ? {
       legUp: 26 * s, legLo: 25 * s,        // uzun bacaklar
       armUp: 14 * s, armLo: 13 * s,
       torso: 25 * s,
@@ -121,10 +196,60 @@ class HumanRig {
   /* yarı-adım genliği (dünya-px): ayağın pelvise göre öne/arkaya açılımı.
      update() fazı buna göre ilerletir, drawStanding ayağı buna göre yerleştirir —
      ikisi aynı değeri kullandığı için ayak yere kilitlenir (kaymaz). */
+  /* GERÇEK İNSAN ÖLÇÜLERİ (bacak boyu L ≈ 0.9 m):
+     yürüyüşte adım uzunluğu ≈ 0.6–0.85·L (yavaş→hızlı), kadans ≈ 1.6–2.2 adım/sn;
+     koşuda adım ≈ 1.4·L, kadans ≈ 2.8–3.2 adım/sn. Genlik = yarım adım.
+     (eskiden adım çok kısaydı → karakter saniyede ~5 adım atıp "tıpış tıpış" koşuyordu) */
   _stepAmp(speed) {
-    const rf = clamp(speed / 220, 0, 1);
-    const base = this.mode === 'crawl' ? (5 + rf * 3) : (8 + rf * 9);
-    return base * this.s;
+    const L = this.A.legUp + this.A.legLo;
+    if (this.mode === 'crawl') return (5 + clamp(speed / 220, 0, 1) * 3) * this.s;
+    const rf = this._runF(speed);
+    const walkAmp = L * (0.27 + 0.15 * clamp(speed / 95, 0, 1));
+    return lerp(walkAmp, L * 0.47, rf);
+  }
+  /* yürüyüş (≈95 px/s ≈ 1.8 m/sn) → koşu (≈230 px/s) karışımı */
+  _runF(speed) { return this.mode === 'crawl' ? 0 : clamp((speed - 105) / 110, 0, 1); }
+  /* destek oranı: yürüyüşte %50 (çift destek), koşuda %34 (uçuş fazı var) */
+  _duty(speed) { return lerp(0.62, 0.36, this._runF(speed)); }
+
+  /* hıza göre adım genliği (gerçek insan yavaşken daha kısa adım atar) */
+  _gaitAmp(speed) {
+    const rf = this._runF(speed);
+    return lerp(lerp(0.5, 1, clamp(speed / 95, 0, 1)), lerp(1, 1.12, clamp((speed - 230) / 80, 0, 1)), rf);
+  }
+  /* duruş eki: itme (öne yaslanmış, dizler bükük), eğik yürüyüş (derin çömelme) */
+  _posture() {
+    if (this.mode === 'push') return { hip: 0.42, knee: 0.38, ankle: 0.1 };
+    if (this.mode === 'crawl') return { hip: 0.95, knee: 1.45, ankle: 0.35 };
+    return null;
+  }
+  /* İLERİ KİNEMATİK — tek bacak, kalça (0,0)'da, bakış +x, y aşağı.
+     uyluk mutlak açısı = kalça açısı − pelvis eğimi (~10°). */
+  _legFK(u, runF, D, amp, post) {
+    const A = this.A, s = this.s;
+    const g = gaitAngles(u, runF, D, amp);
+    const tilt = lerp(10, 12, runF) * Math.PI / 180;
+    const th = g.hip - tilt + (post?.hip ?? 0);
+    const ts = th - (g.knee + (post?.knee ?? 0));
+    const kx = Math.sin(th) * A.legUp, ky = Math.cos(th) * A.legUp;
+    const ax = kx + Math.sin(ts) * A.legLo, ay = ky + Math.cos(ts) * A.legLo;
+    const toeUp = ts + g.ankle - (post?.ankle ?? 0);
+    const toeY = ay - Math.sin(toeUp) * 9 * s, heelY = ay + Math.sin(toeUp) * 4 * s;
+    return { kx, ky, ax, ay, toeUp, low: Math.max(toeY, heelY) + 1.8 * s, thigh: th };
+  }
+  /* faz hızı: destekteki ayak kalçaya göre tam gövde hızıyla geri gitsin (kayma yok) */
+  _gaitRate(speed) {
+    const runF = this._runF(speed), D = this._duty(speed), amp = this._gaitAmp(speed), post = this._posture();
+    const X = (u) => this._legFK(u, runF, D, amp, post).ax;
+    const avg = Math.max(1, (X(0) - X(D * 0.999)) / D);
+    const e = 0.006;
+    let sl = 0, n = 0;
+    for (const off of [0, 0.5]) {
+      const uu = (((this.gaitU ?? 0) + off) % 1 + 1) % 1;
+      if (uu < D) { sl += (X(uu - e) - X(uu + e)) / (2 * e); n++; }
+    }
+    const inst = n ? sl / n : avg;
+    return speed / clamp(inst, avg * 0.6, avg * 1.7);
   }
 
   /* omuza GÖRELİ el yumuşatması: metronom gibi kusursuz salınımı kırar,
@@ -154,6 +279,8 @@ class HumanRig {
 
     this.breathe += dt;
     this.swimT += dt;
+    this.airT = this.grounded ? 0 : (this.airT ?? 0) + dt;
+    if (this.prepT > 0) this.prepT -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
     if (this.recoilT > 0) this.recoilT -= dt;
 
@@ -190,13 +317,20 @@ class HumanRig {
       this.phase += dt * (2.2 + speed / 60);
     } else if (this.mode === 'climb') {
       this.phase += Math.abs(this.vy) * 0.018 * dt * 60 / 16.6;
-    } else if (this.grounded && speed > 6 && this.mode !== 'pry' && !this.action) {
+    } else if (this.grounded && speed > 6 && this.mode !== 'pry' && !this.action && this.mode !== 'crawl-old') {
+      /* GERÇEK YÜRÜYÜŞ FAZI (u: 0..1) — topuk vuruşlarında adım sesi */
+      const prevU = this.gaitU ?? 0;
+      this.gaitU = prevU + this._gaitRate(speed) * dt;
+      if (Math.floor(this.gaitU * 2) !== Math.floor(prevU * 2) && this.stepCallback) this.stepCallback(Math.min(1, speed / 200));
+      this.gaitU %= 1;
       /* fazı GİDİLEN MESAFEYE bağla: gövde bir adım (2×genlik) yol alınca faz π ilerler.
          Böylece basan ayak yere KİLİTLİ kalır — geriye kayma / moonwalk olmaz.
          (Eski strideRate modeli adımı gerçek hızla eşleştirmiyordu, ayak geriye kayıyordu.) */
       const ampW = this._stepAmp(speed);
-      this.phase += (speed * dt) * Math.PI / (2 * ampW);
-      const stepHalf = Math.floor(this.phase / Math.PI);
+      const D = this._duty(speed);
+      /* destekte ayak pelvise göre 2·genlik yol alır, süresi 2πD/ω → ω = v·π·D/genlik */
+      this.phase += (speed * dt) * Math.PI * D / ampW;
+      const stepHalf = Math.floor((this.phase - Math.PI * 2 * (1 - D)) / Math.PI);
       if (stepHalf !== this._lastStepLeg) {
         this._lastStepLeg = stepHalf;
         if (this.stepCallback) this.stepCallback(Math.min(1, speed / 200));
@@ -207,7 +341,37 @@ class HumanRig {
     }
     if (this.mode === 'pry') this.pryAnim += dt;
 
+    /* kenar / tırmanma / yuvarlanma verisi */
+    if (state.ledge) this.ledge = state.ledge;
+    this.mantleP = state.mantleP ?? 0;
+    this.rollP = state.rollP ?? 0;
+    if (state.edgeX != null) this.edgeX = state.edgeX;
+
+    /* POZ GEÇİŞİ — mod veya yön değişince eski iskelet 0.15–0.2 sn içinde yenisine
+       eriyerek geçer. Ani "pat" diye poz değiştirme (robot hissi) yok; yön değişimi
+       bu sayede gövdenin kendi ekseni etrafında dönmesi gibi görünür. */
+    const cat = this._animCat() + '|' + (this.facing > 0 ? 'R' : 'L');
+    if (this._cat && cat !== this._cat && this._lastOut && this.mode !== 'ragdoll') {
+      const turnOnly = cat.split('|')[0] === this._cat.split('|')[0];
+      this._blendFrom = this._lastOut;
+      this._blendT = 0;
+      this._blendDur = turnOnly ? 0.2 : 0.15;
+    }
+    this._cat = cat;
+    if (this._blendFrom) {
+      this._blendT += dt;
+      if (this._blendT >= this._blendDur) this._blendFrom = null;
+    }
+
     this.draw();
+  }
+
+  _animCat() {
+    if (this.mode === 'ragdoll') return 'ragdoll';
+    if (this.action) return 'act:' + this.action.name;
+    if (this.mode === 'pose') return 'pose:' + this.poseName;
+    if (['crawl', 'slide', 'swim', 'climb', 'hang', 'mantle', 'teeter', 'roll'].includes(this.mode)) return this.mode;
+    return 'stand';
   }
 
   triggerLand(impact) { this.landImpact = clamp(impact, 0, 1); }
@@ -282,9 +446,124 @@ class HumanRig {
     if (this.action) return this.drawAction();
     if (this.mode === 'pose') return this.drawPose();
     if (this.mode === 'crawl') return this.drawCrawl();
+    if (this.mode === 'slide') return this.drawSlide();
     if (this.mode === 'swim') return this.drawSwim();
     if (this.mode === 'climb') return this.drawClimb();
+    if (this.mode === 'hang') return this.drawHang();
+    if (this.mode === 'mantle') return this.drawMantle();
+    if (this.mode === 'teeter') return this.drawTeeter();
+    if (this.mode === 'roll') return this.drawRoll();
     this.drawStanding();
+  }
+
+  /* ============ KENARA TUTUNMA ============
+     İki el kenarın üstünde, kollar neredeyse gergin, gövde duvara dönük sarkar.
+     Bir ayak duvara dayanıp tutunmaya çalışır, diğeri boşlukta sallanır. */
+  drawHang() {
+    const A = this.A, J = this.joints, s = this.s;
+    const L = this.ledge ?? { x: this.x, y: this.y - 40, side: -this.facing };
+    const f = this.facing;
+    const armR = A.armUp + A.armLo, legLen = A.legUp + A.legLo;
+    const sw = Math.sin(this.breathe * 2.1) * 2.2 * s;
+    const neck = { x: L.x - f * 7 * s + sw * 0.25, y: L.y + armR * 0.8 };
+    const pelvis = { x: neck.x - f * 2 * s + sw * 0.6, y: neck.y + A.torso };
+    const head = { x: neck.x + f * A.headR * 0.5, y: neck.y - A.headR * 1.35 };
+    const scrab = Math.max(0, Math.sin(this.breathe * 4.5));
+    const footL = { x: pelvis.x + f * 5 * s + sw, y: pelvis.y + legLen * 0.93 };
+    const footR = { x: L.x - f * 1 * s, y: pelvis.y + legLen * 0.62 - scrab * 7 * s };   // duvara dayanan ayak
+    const legL = solveIK2(pelvis.x - A.hipW * 0.3 * f, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.3 * f, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const hL = { x: L.x + f * 3 * s, y: L.y + 0.5 * s }, hR = { x: L.x + f * 8.5 * s, y: L.y };
+    const armL = solveIK2(neck.x - A.shW * 0.35 * f, neck.y, hL.x, hL.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const armRr = solveIK2(neck.x + A.shW * 0.35 * f, neck.y, hR.x, hR.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    this._setJoints(J, pelvis, neck, head, legL, legR, armL, armRr);
+    J.footL.ang = 0.9; J.footR.ang = 0.2;
+    this.render(J, 0);
+  }
+
+  /* ============ KENARDAN YUKARI ÇIKMA (mantle) ============
+     0 → sarkma · 0.4 → kollarla çekip göğsü kenarın üstüne al ·
+     0.7 → bir dizi kenara at, ellerle it · 1 → ayağa kalk. */
+  drawMantle() {
+    const A = this.A, J = this.joints, s = this.s;
+    const L = this.ledge ?? { x: this.x, y: this.y, side: -this.facing };
+    const f = this.facing;
+    const armR = A.armUp + A.armLo, legLen = A.legUp + A.legLo, T = A.torso, H = A.standH;
+    const handsDown = -H - T + armR * 0.86;
+    const K = [
+      { p: 0,    pel: [-9, armR * 0.8 + T], neck: [-7, armR * 0.8], hL: [3, 0], hR: [8, 0], fL: [-5, armR * 0.8 + T + legLen * 0.92], fR: [-9, armR * 0.8 + T + legLen * 0.84] },
+      { p: 0.4,  pel: [-4, T * 0.5], neck: [6, -T * 0.42], hL: [4, 0], hR: [10, 0], fL: [-6, T * 0.5 + legLen * 0.9], fR: [-9, T * 0.5 + legLen * 0.78] },
+      { p: 0.72, pel: [5, -legLen * 0.38], neck: [20, -legLen * 0.38 - T * 0.78], hL: [16, 0], hR: [23, 0], fL: [9, 0], fR: [-3, legLen * 0.22] },
+      { p: 1,    pel: [16, -H], neck: [17.5, -H - T], hL: [13, handsDown], hR: [21, handsDown], fL: [12, 0], fR: [20, 0] },
+    ];
+    const p = clamp(this.mantleP, 0, 1);
+    let i = 0;
+    while (i < K.length - 2 && p > K[i + 1].p) i++;
+    const a = K[i], b = K[i + 1];
+    const k = smooth((p - a.p) / (b.p - a.p));
+    /* u bileşeni (yatay) s ile ölçeklenir; v (dikey) zaten dünya biriminde */
+    const P = (key) => ({ x: L.x + f * lerp(a[key][0], b[key][0], k) * s, y: L.y + lerp(a[key][1], b[key][1], k) });
+    const pelvis = P('pel'), neck = P('neck');
+    const head = { x: neck.x + f * A.headR * 0.55, y: neck.y - A.headR * 1.35 };
+    const fL = P('fL'), fR = P('fR'), hL = P('hL'), hR = P('hR');
+    const legL = solveIK2(pelvis.x - A.hipW * 0.3 * f, pelvis.y, fL.x, fL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.3 * f, pelvis.y, fR.x, fR.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const bend = p < 0.5 ? (f > 0 ? -1 : 1) : (f > 0 ? 1 : -1);    // çekişte dirsek dışa, itişte geriye
+    const armL = solveIK2(neck.x - A.shW * 0.35 * f, neck.y, hL.x, hL.y, A.armUp, A.armLo, bend);
+    const armRr = solveIK2(neck.x + A.shW * 0.35 * f, neck.y, hR.x, hR.y, A.armUp, A.armLo, bend);
+    this._setJoints(J, pelvis, neck, head, legL, legR, armL, armRr);
+    J.footL.ang = p < 0.6 ? 0.8 : 0; J.footR.ang = p < 0.85 ? 0.7 : 0;
+    this.render(J, 0);
+  }
+
+  /* ============ KENARDA SENDELEME ============
+     Uçurumun ağzında: ön ayağın parmakları boşlukta, gövde geriye yaslanır,
+     kollar dengeyi bulmak için daire çizer. */
+  drawTeeter() {
+    const A = this.A, J = this.joints, s = this.s, f = this.facing;
+    const gY = this.groundY, t = this.breathe;
+    const armR = A.armUp + A.armLo;
+    const edgeX = this.edgeX ?? (this.x + f * 8 * s);
+    const wob = Math.sin(t * 5.2) * 0.7 + Math.sin(t * 8.3) * 0.3;
+    const pelvis = { x: edgeX - f * 9 * s - wob * 1.4 * s * f, y: gY - A.standH + 2.5 * s };
+    const lean = -f * (0.2 + wob * 0.1);
+    const neck = { x: pelvis.x + Math.sin(lean) * A.torso, y: pelvis.y - Math.cos(lean) * A.torso };
+    const head = { x: neck.x + f * A.headR * 0.4, y: neck.y - A.headR * 1.4 + 1.5 * s };   // aşağı, boşluğa bakar
+    const footB = { x: pelvis.x - f * 8 * s, y: gY };
+    const footF = { x: edgeX - f * 3 * s, y: gY - Math.max(0, wob) * 2 * s };
+    const legL = solveIK2(pelvis.x - A.hipW * 0.4 * f, pelvis.y, footB.x, footB.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.4 * f, pelvis.y, footF.x, footF.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const a = t * 7.5;
+    const hR = { x: neck.x + f * Math.cos(a) * armR * 0.62, y: neck.y - Math.sin(a) * armR * 0.62 };
+    const hL = { x: neck.x + f * Math.cos(a + 2.4) * armR * 0.55, y: neck.y - Math.sin(a + 2.4) * armR * 0.55 };
+    const armL = solveIK2(neck.x - A.shW * 0.4 * f, neck.y, hL.x, hL.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armRr = solveIK2(neck.x + A.shW * 0.4 * f, neck.y, hR.x, hR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    this._setJoints(J, pelvis, neck, head, legL, legR, armL, armRr);
+    J.footR.ang = 0.25 + Math.max(0, wob) * 0.2;
+    this.render(J, lean);
+  }
+
+  /* ============ YUVARLANMA (sert inişte omuz üstü takla) ============
+     Gövde top gibi kıvrılır ve hareket yönünde bir tur döner — yükü dağıtır. */
+  drawRoll() {
+    const A = this.A, J = this.joints, s = this.s, f = this.facing;
+    const p = clamp(this.rollP, 0, 1);
+    const c = { x: this.x, y: this.groundY - 15 * s };
+    const ang = p * Math.PI * 2;
+    const curl = Math.sin(Math.min(1, p * 1.25) * Math.PI) * 0.6 + 0.4;   // başta ve sonda biraz açılır
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const R = (u, v) => ({ x: c.x + f * (u * ca - v * sa) * s, y: c.y + (u * sa + v * ca) * s });
+    const pelvis = R(-5, 6 * curl);
+    const neck = R(5 * curl, -8);
+    const head = R(10 * curl, -9 - 3 * (1 - curl));
+    const kneeL = R(7, 2 * curl), kneeR = R(5, 4 * curl);
+    const footL = R(-1, 13 * curl + 2), footR = R(-4, 12 * curl + 4);
+    const handL = R(6, 8), handR = R(9, 6);
+    const elbL = R(1, 2), elbR = R(3, 1);
+    J.pelvis = pelvis; J.neck = neck; J.head = head;
+    J.kneeL = kneeL; J.kneeR = kneeR; J.footL = footL; J.footR = footR;
+    J.elbL = elbL; J.elbR = elbR; J.handL = handL; J.handR = handR;
+    this.render(J, 0);
   }
 
   /* ============ AYAKTA / KOŞU / HAVA ============
@@ -292,215 +571,253 @@ class HumanRig {
      kafa stabilize, koşuda dirsekler bükük, kalça salınımı
      (maria belirgin), yükselme/düşme ayrı hava pozları. */
   drawStanding() {
-    const A = this.A, f = this.facing, J = this.joints;
+    const A = this.A, f = this.facing, J = this.joints, s = this.s;
     const fem = this.variant === 'maria';
     const speed = Math.abs(this.vx);
     const moving = speed > 6;
-    const runF = clamp(speed / 220, 0, 1);
-    const walkF = 1 - runF;
+    const runF = this._runF(speed);
+    const D = this._duty(speed);
+    const TAU = Math.PI * 2;
+    const swingLen = TAU * (1 - D);
 
     let pelvisX = this.x, pelvisY = this.y;
     const crouch = this.crouchAmt;
     const gY = this.groundY;
     const ph = this.phase;
+    const legLen = A.legUp + A.legLo;
 
-    /* dikey salınım: gerçek yürüyüşte pelvis TEK-DESTEK ortasında (bacak dik,
-       |sin|=1) en yüksek, açılım/çift-destek anında (|sin|=0) en alçaktır */
-    const bob = this.grounded && moving ? -Math.abs(Math.sin(ph)) * (1.1 + runF * 2.0) * this.s : 0;
-    /* yürürken dizler hafif bükük dursun: kalçayı alçaltır, böylece ayaklar
-       adım açılımı boyunca yere gerçekten ulaşır (kilitli düz bacak → havada kalma sorununu çözer) */
-    const walkDip = (this.grounded && moving) ? (0.8 + runF * 2.6) * this.s : 0;
-    /* DURUŞ CANLILIĞI — heykel/robot hissini kıran sürekli mikro-hareket:
-       yavaş ağırlık aktarımı (sağ↔sol), nefesle göğüs/omuz yükselişi, başın hafif sürüklenmesi.
-       Bu sinyaller aşağıda pelvis/omuz/baş/ele dağıtılır. */
+    /* yön değiştirirken fren kayması: gövde hâlâ eski yöne kayıyor ama yüz yeni yöne dönük */
+    const skid = (this.grounded && speed > 70 && Math.sign(this.vx) === -f && !this.aimMode) ? clamp((speed - 70) / 120, 0, 1) : 0;
+
+    /* ---- DURUŞ CANLILIĞI (nefes, ağırlık aktarımı, etrafa bakış) ---- */
     const idle = (!moving && this.grounded && this.mode !== 'pry' && !this.aimMode) ? 1 : 0;
     const breathC = Math.sin(this.breathe * 1.5);
     const sway = Math.sin(this.breathe * 0.45);
     const sway2 = Math.sin(this.breathe * 0.3 + 1.1);
-    /* çok yavaş ağırlık aktarımı (sağ↔sol, ~20 sn periyot) ve başın ara sıra
-       etrafa bakışı — durağan heykeli "bekleyen canlı"ya çevirir. */
     const wshift = Math.sin(this.breathe * 0.32);
     const look = Math.sin(this.breathe * 0.21 + 0.6);
-    const breathOff = idle ? (breathC * 0.7 - 0.3) * this.s : 0;
-    const idleShift = idle * (sway * 1.1 + wshift * 1.7) * this.s;    // belirgin ama yavaş ağırlık kayması
-    /* maria: yürürken kalça salınımı (yumuşak yatay sürüklenme + rotasyon hissi) */
-    /* maria SEKSİ YÜRÜYÜŞ — belirgin kalça salınımı (catwalk): pelvis yana
-       daha çok süzülür, omuzlar karşı yöne yatar (aşağıda shX), adımlar
-       merkez hattına yakın atılır (bacaklar çapraz) → zarif, dişil tempo. */
-    const hipSway = (fem && this.grounded && moving) ? Math.sin(ph) * (3.4 * walkF + 1.5) * this.s : 0;
+    const breathOff = idle ? (breathC * 0.7 - 0.3) * s : 0;
+    const idleShift = idle * (sway * 1.1 + wshift * 1.7) * s;
+
+    /* ---- pelvis dikey hareketi ----
+       yürüyüş: ters sarkaç — destek ortasında (bacak dik) pelvis EN YÜKSEK.
+       koşu: yay-kütle — destek ortasında pelvis EN ALÇAK, uçuş fazında en yüksek. */
+    const midL = swingLen + Math.PI * D;                      // sol bacak destek ortası
+    const c2 = 0.5 + 0.5 * Math.cos(2 * (ph - midL));        // 1 = destek ortası
+    const walkBob = -c2 * 1.7 * s;
+    const runBob = (c2 - 0.55) * 4.2 * s;
+    const bob = (this.grounded && moving) ? lerp(walkBob, runBob, runF) : 0;
+    /* kalça, adım açılımında bacak (neredeyse düz dizle) yere uzanabilecek kadar alçalır —
+       gerçek yürüyüşte topuk vuruşunda diz neredeyse düzdür */
+    const ampNow = this._stepAmp(speed);
+    const reachH = Math.sqrt(Math.max(1, (legLen * 0.985) ** 2 - ampNow * ampNow));
+    const walkDip = (this.grounded && moving) ? Math.max(0, A.standH - reachH) + (0.6 + runF * 2.6) * s : 0;
+
+    const hipSway = (fem && this.grounded && moving) ? Math.sin(ph) * (2.6 * (1 - runF) + 0.8) * s : 0;
     pelvisX += hipSway * 0.75 + idleShift;
-    /* topuk: maria'yı UZATIR — pelvis topuk yüksekliği kadar yükselir; ayak ucu/topuk
-       (aşağıda foot.y -= hl) ile birlikte bacaklar düz kalır, "oturma" olmaz, boy uzar. */
-    const heelLift = (fem && this.grounded) ? 7 * this.s : 0;
-    /* yüklenen bacakta pelvis hafif çöker (ağırlık o tarafta) → cansız simetri kırılır */
-    pelvisY += bob + walkDip + breathOff - heelLift + idle * Math.abs(wshift) * 0.8 * this.s + this.landImpact * 12 * this.s + crouch * 12 * this.s;  // sert inişte dizler çöker
+    const heelLift = (fem && this.grounded) ? 7 * s : 0;
+    pelvisY += bob + walkDip + breathOff - heelLift + idle * Math.abs(wshift) * 0.8 * s
+      + this.landImpact * 15 * s + crouch * 12 * s + skid * 7 * s
+      + (this.prepT > 0 && this.grounded ? 11 * s : 0);                   // zıplamadan önce çömelme (hazırlık)
 
-    let lean = clamp(this.vx / 520, -0.42, 0.42) * (0.55 + runF * 0.45);
-    if (!this.grounded) lean = clamp(this.vx / 800, -0.3, 0.3) + clamp(this.vy / 2400, -0.15, 0.25);
+    /* ---- gövde eğimi ---- */
+    const dirV = Math.sign(this.vx) || f;
+    let lean = (this.grounded && moving) ? dirV * (0.05 + runF * 0.21) : 0;
+    if (!this.grounded) lean = clamp(this.vx / 900, -0.22, 0.22) + f * clamp(-this.vy / 2600, -0.08, 0.12);
+    if (skid) lean = f * 0.28 * skid;                         // fren: geriye (yeni yöne) yaslan
+    if (this.grounded && this.landImpact > 0.04) lean += f * 0.42 * this.landImpact;   // iniş: gövde öne katlanır, dizler yükü alır
+    if (this.grounded && this.prepT > 0) lean += f * 0.32;                              // sıçrama hazırlığı
     if (this.mode === 'push') lean = f * 0.55;
-    /* maria duruşu: hafif dik, göğüs önde */
-    const postureCurve = fem ? -f * 0.06 : f * 0.02;
+    const postureCurve = fem ? -f * 0.05 : f * 0.02;
 
-    const torsoLen = A.torso * (1 - crouch * 0.2) * (1 - this.landImpact * 0.22);   // iniş anında gövde de hafif çöker (squash)
-    /* omuzlar nefesle yükselir ve ağırlık aktarımına ters yatar → canlı omurga eğrisi */
-    const shX = pelvisX + Math.sin(lean + postureCurve) * torsoLen - hipSway * 0.5 - idle * sway * 0.9 * this.s;
-    const shY = pelvisY - Math.cos(lean) * torsoLen - (idle ? Math.max(0, breathC) * 0.8 * this.s : 0);
-    /* kafa stabilizasyonu: insan kafası gövde sallansa da düz kalır + duruşta hafif sürüklenir/başını oynatır */
-    const headLean = lean * 0.55 + (this.hurtT > 0 ? Math.sin(this.breathe * 40) * 0.1 : 0) + idle * (sway2 * 0.045 + look * 0.05);
-    const headX = shX + Math.sin(headLean) * (A.headR * 1.5) + f * A.headR * 0.26 + idle * (sway2 * 0.8 + look * 1.5) * this.s;
-    const headY = shY - Math.cos(headLean) * (A.headR * 1.5) - A.headR * 0.45 - bob * 0.45;
+    const torsoLen = A.torso * (1 - crouch * 0.2);
+    const shX = pelvisX + Math.sin(lean + postureCurve) * torsoLen - hipSway * 0.5 - idle * sway * 0.9 * s;
+    const shY = pelvisY - Math.cos(lean) * torsoLen - (idle ? Math.max(0, breathC) * 0.8 * s : 0);
+    /* kafa stabilizasyonu: gövde eğilse de bakış ufukta kalır */
+    const headLean = lean * 0.45 + (this.hurtT > 0 ? Math.sin(this.breathe * 40) * 0.1 : 0) + idle * (sway2 * 0.045 + look * 0.05);
+    const headX = shX + Math.sin(headLean) * (A.headR * 1.5) + f * A.headR * 0.26 + idle * (sway2 * 0.8 + look * 1.5) * s;
+    const headY = shY - Math.cos(headLean) * (A.headR * 1.5) - A.headR * 0.45 - bob * 0.35;
 
-    /* ---- bacaklar ---- */
-    const stride = this._stepAmp(speed);          // update() ile birebir aynı → ayak kilitli
-    const lift = (4 + runF * 12) * this.s;
-    const legReach = (A.legUp + A.legLo) * 0.992;   // hemen hemen tam uzanım
-    let footL, footR;
+    /* ============ BACAKLAR ============ */
+    const stride = this._stepAmp(speed);
+    let footL, footR, footAngL = 0, footAngR = 0;
     if (!this.grounded) {
-      if (this.vy < -40) {
-        /* yükselme: ön diz çekik, arka bacak itişten uzanmış */
-        const k = clamp(-this.vy / 700, 0, 1);
-        footL = { x: pelvisX + f * (10 + k * 6) * this.s, y: pelvisY + A.legUp * (0.7 - k * 0.25) + A.legLo * 0.3 };
-        footR = { x: pelvisX - f * (8 + k * 7) * this.s, y: pelvisY + (A.legUp + A.legLo) * (0.86 + k * 0.08) };
-      } else {
-        /* düşme: bacaklar inişe hazır, dizler yaylanmış */
-        const k = clamp(this.vy / 800, 0, 1);
-        footL = { x: pelvisX + f * 9 * this.s, y: pelvisY + (A.legUp + A.legLo) * (0.72 + k * 0.16) };
-        footR = { x: pelvisX - f * 4 * this.s, y: pelvisY + (A.legUp + A.legLo) * (0.66 + k * 0.2) };
-      }
+      /* HAVA — gerçek sıçrayış evreleri:
+         1) itiş (kalkıştan ilk ~0.13 sn): iki bacak gergin, ayak uçları aşağı (bilek itişi)
+         2) yükseliş/tepe: dizler göğse toplanır (yerinde sıçramada ikisi birlikte,
+            koşarak sıçramada öndeki diz önde, arkadaki bacak geride)
+         3) düşüş: bacaklar inişe uzanır, ayaklar biraz önde, dizler hafif bükük */
+      const t = clamp((this.vy + 260) / 620, 0, 1);       // 0 yükseliş .. 1 düşüş
+      const tuck = 1 - Math.abs(2 * t - 1);                 // tepe noktası
+      const leap = clamp(Math.abs(this.vx) / 200, 0, 1);    // koşarak sıçrayış → bacaklar açılır
+      const push = this.vy < -60 ? clamp(1 - (this.airT ?? 1) / 0.13, 0, 1) : 0;
+      // yerinde sıçrama: iki ayak birlikte toplanır
+      const stL = { x: pelvisX + f * lerp(5, 7, t) * s, y: pelvisY + legLen * lerp(0.6, 0.88, t) - tuck * 9 * s };
+      const stR = { x: pelvisX - f * lerp(1, -2, t) * s, y: pelvisY + legLen * lerp(0.64, 0.86, t) - tuck * 9 * s };
+      // koşarak sıçrama: makas
+      const lpL = { x: pelvisX + f * lerp(14, 9, t) * s, y: pelvisY + legLen * lerp(0.5, 0.86, t) - tuck * 6 * s };
+      const lpR = { x: pelvisX - f * lerp(17, 5, t) * s, y: pelvisY + legLen * lerp(0.9, 0.8, t) - tuck * 10 * s };
+      footL = { x: lerp(stL.x, lpL.x, leap), y: lerp(stL.y, lpL.y, leap) };
+      footR = { x: lerp(stR.x, lpR.x, leap), y: lerp(stR.y, lpR.y, leap) };
+      // itiş: bacaklar gergin, ayaklar kalçanın altında/biraz geride
+      footL.x = lerp(footL.x, pelvisX - f * (1 + leap * 3) * s, push); footL.y = lerp(footL.y, pelvisY + legLen * 0.99, push);
+      footR.x = lerp(footR.x, pelvisX - f * (4 + leap * 10) * s, push); footR.y = lerp(footR.y, pelvisY + legLen * 0.99, push);
+      footAngL = lerp(lerp(0.1, 0.15, t), 0.95, push);
+      footAngR = lerp(lerp(0.45, 0.2, t), 1.0, push);
+    } else if (skid) {
+      footL = { x: pelvisX - f * 15 * s, y: gY };           // fren ayağı ileride (kayma yönünde)
+      footR = { x: pelvisX - f * 2 * s, y: gY };
+      footAngL = -0.35;
     } else if (moving) {
-      /* gerçekçi adım döngüsü:
-         sin>0 → savruluş (yumuşak kalkış-iniş yayı, öne süpürme)
-         sin<=0 → basma: ayak YERDE SABİT geriye süpürülür (kayma yok hissi) */
-      /* kalça yüksekliğinde bacağın yere değebileceği max yatay açılım —
-         adımı buna kilitle ki basan ayak HER ZAMAN yere bassın (havada kalma yok) */
+      /* ADIM DÖNGÜSÜ — destek fazında ayak pelvise göre DOĞRUSAL geri gider
+         (hız tam olarak -v → ayak yerde kilitli, kayma/moonwalk yok).
+         Salınımda yumuşak öne savrulur. Koşuda topuk kalçaya doğru katlanır. */
       const hipH = gY - pelvisY;
-      const maxHoriz = Math.sqrt(Math.max(1, legReach * legReach - hipH * hipH)) * 0.98;
+      const maxHoriz = Math.sqrt(Math.max(1, legLen * legLen * 0.985 - hipH * hipH));
+      const liftW = legLen * 0.15, liftR = legLen * 0.5;
+      const ss = (v) => v * v * (3 - 2 * v);
       const legFoot = (p) => {
-        const sn = Math.sin(p), cs = Math.cos(p);
-        /* -cos: savruluşta ayak geri→ön (havada öne uzanır),
-           basmada gövde ilerlerken ayak yerde ön→arka süpürülür (kayma yok) */
-        const fx = pelvisX + clamp(-cs * stride * f, -maxHoriz, maxHoriz);
-        if (sn > 0) {
-          const arc = Math.sin(Math.min(Math.PI, sn * Math.PI));
-          return { x: fx, y: gY - sn * lift * (0.7 + 0.3 * arc) };
+        const u = ((p % TAU) + TAU) % TAU;
+        if (u < swingLen) {
+          /* SALINIM: parmak itişiyle topuk yukarı kalkar (diz bükülür), ayak gövdenin
+             altından alçak geçer, sona doğru diz açılır ve parmak yukarı — topukla basmaya hazır */
+          const k = u / swingLen;
+          const e = 0.5 - 0.5 * Math.cos(Math.PI * k);
+          let x = -stride + 2 * stride * e;
+          x -= runF * stride * 0.55 * Math.sin(Math.PI * Math.min(1, k * 1.6)) * (1 - k);   // koşu: topuk kalçaya katlanır
+          const hW = Math.sin(Math.PI * Math.pow(k, 0.62)) * (1 - 0.35 * ss(clamp((k - 0.45) / 0.55, 0, 1)));
+          const hR = Math.sin(Math.PI * Math.pow(k, 0.8));
+          const h = lerp(hW * liftW, hR * liftR, runF);
+          const ang = lerp(lerp(0.75, -0.32, ss(k)), lerp(0.95, -0.05, ss(k)), runF);
+          return { x: pelvisX + clamp(x, -maxHoriz * 1.3, maxHoriz) * f, y: gY - h, ang, swing: true };
         }
-        return { x: fx, y: gY };
+        /* DESTEK: topukla basış (parmak yukarı) → taban düz → topuk kalkar, parmak üstünde itiş.
+           Topuk kalkarken ayak bileği de yükselir (ayak parmak üstünde döner). */
+        const k = (u - swingLen) / (TAU * D);
+        const x = stride - 2 * stride * k;
+        const heelOn = lerp(0.15, 0.05, runF), heelOff = lerp(0.6, 0.45, runF);
+        let ang = 0;
+        if (k < heelOn) ang = lerp(lerp(-0.32, -0.05, runF), 0, k / heelOn);
+        else if (k > heelOff) ang = (k - heelOff) / (1 - heelOff) * lerp(0.75, 0.95, runF);
+        const ankleLift = ang > 0 ? Math.sin(ang) * 8.5 * s : Math.sin(-ang) * 2.5 * s;
+        return { x: pelvisX + clamp(x, -maxHoriz, maxHoriz) * f, y: gY - ankleLift, ang, swing: false };
       };
       footL = legFoot(ph);
       footR = legFoot(ph + Math.PI);
+      footAngL = footL.ang; footAngR = footR.ang;
     } else {
-      /* duruş: ağırlık bir bacakta — destek bacağı pelvis altında dik,
-         serbest bacak hafif önde gevşek (kontrapost) */
-      footL = { x: pelvisX - f * 1.5 * this.s, y: gY };
-      footR = { x: pelvisX + f * (fem ? 8.5 : 7) * this.s, y: gY - 0.5 };
-      if (fem) { footR.x += f * 1.5 * this.s; }   // maria: bacak çapraz önde
+      /* duruş: kontrapost — ağırlık bir bacakta */
+      footL = { x: pelvisX - f * 1.5 * s, y: gY };
+      footR = { x: pelvisX + f * (fem ? 10 : 7) * s, y: gY - 0.5 };
     }
+    if (fem && this.grounded) { const hl = 7 * s; footL.y -= hl; footR.y -= hl; }
 
-    /* maria topuklu: ayak bileği topuk yüksekliği kadar yerden kalkar (topuk yere değer) */
-    if (fem && this.grounded) { const hl = 7 * this.s; footL.y -= hl; footR.y -= hl; }   // belirgin yüksek topuk
-
-    /* diz İLERİ bakar (insan dizi bakış yönüne bükülür) — bendDir = -f */
     const legL = solveIK2(pelvisX - A.hipW * 0.4 * f, pelvisY, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
     const legR = solveIK2(pelvisX + A.hipW * 0.4 * f, pelvisY, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
 
-    /* ============ KOLLAR — GERÇEK İNSAN HAREKETİ ============
-       Doğal yürüyüş/koşuda kollar HEDEFE değil, omuzdan AÇIYLA salınır (FK):
-       üst kol omuzdan öne-arkaya sallanır, dirsek doğal flekste bükülür,
-       ön kol takip eder. Bacaklarla çapraz faz. Bu, "eli bir noktaya zorla
-       koyan" IK'nın yarattığı robotik/yapışkan hissi tamamen kaldırır.
-       Özel haller (nişan, itme, levye, havada, eşya tutma) yine IK ile. */
-    const shoulderTwist = (this.grounded && moving) ? Math.cos(ph) * (1.5 + runF * 1.5) * this.s : 0;
-    /* OMUZ HATTI EĞİLMESİ (torso roll): yürürken öne salınan kolun omzu hafif
-       yükselir, diğeri çöker → omuz çizgisi adımla eğilir. Katı blok-gövde yerine
-       omurganın canlı karşıt rotasyonu okunur (kalça↔omuz). */
-    const shRoll = (this.grounded && moving) ? Math.sin(ph) * (0.9 + runF * 1.6) * this.s : 0;
-    const shL = { x: shX - A.shW * 0.45 * f - shoulderTwist * f, y: shY + 1 + shRoll };
-    const shR = { x: shX + A.shW * 0.45 * f + shoulderTwist * f, y: shY + 1 - shRoll };
+    /* ============ KOLLAR ============
+       ÇAPRAZ salınım: bir kol, KARŞI bacak öndeyken öndedir (sağ kol ↔ sol bacak).
+       Salınım miktarı karşı ayağın gerçek konumundan okunur → bacakla birebir senkron.
+       Yürüyüşte gevşek, koşuda dirsek ~90° bükük ve güçlü pompalama. */
+    const shoulderTwist = (this.grounded && moving) ? (footL.x - pelvisX) * f / Math.max(1, stride) * (1.2 + runF * 1.6) * s : 0;
+    const shRoll = (this.grounded && moving) ? Math.sin(ph) * (0.7 + runF * 1.4) * s : 0;
+    const shL = { x: shX - A.shW * 0.45 * f + shoulderTwist * f, y: shY + 1 + shRoll };
+    const shR = { x: shX + A.shW * 0.45 * f - shoulderTwist * f, y: shY + 1 - shRoll };
     const armReach = A.armUp + A.armLo;
     const recoil = this.recoilT > 0 ? Math.sin(this.recoilT * 28) * this.recoilT * 9 : 0;
-    const leanFwd = fem ? 0.18 : 0.13;                       // kol gövdeye göre hafif önde asılı
-    const swingMag = moving ? (0.34 + runF * 0.46) : 0;      // yürüyüşte hoş salınım, koşuda geniş
+    const swingMag = moving ? (0.34 + runF * 0.42) : 0;
+    const oppSwing = (oppFoot) => moving && this.grounded ? clamp((oppFoot.x - pelvisX) * f / Math.max(1, stride), -1.1, 1.1) : 0;
 
-    /* serbest salınan kol — omuz açısı + dirsek fleksiyonu (anatomik) */
-    const fkArm = (sh, phase) => {
-      const sw = Math.cos(phase);                            // +1 öne (bakış yönü) .. −1 arkaya
+    const fkArm = (sh, sw) => {
       const breatheSwing = idle ? Math.sin(this.breathe * 0.85) * 0.05 : 0;
-      const upperAng = Math.PI / 2 - f * (leanFwd + sw * swingMag) + breatheSwing;
-      // dirsek: temelde hafif bükük; koşuda ve kol öne gelirken daha çok bükülür
-      let flex = (0.42 + runF * 0.95) + (moving ? Math.max(0, sw) * (0.12 + runF * 0.7) : 0);
-      flex = clamp(flex, 0, 1.85);
+      const upperAng = Math.PI / 2 - f * ((fem ? 0.12 : 0.08) + lean * 0.6 + sw * swingMag) + breatheSwing;
+      let flex = lerp(0.3, 1.45, runF) + Math.max(0, sw) * lerp(0.25, 0.35, runF);
+      flex = clamp(flex, 0, 1.9);
       const ex = sh.x + Math.cos(upperAng) * A.armUp;
       const ey = sh.y + Math.sin(upperAng) * A.armUp;
       const foreAng = upperAng - f * flex;
       return { jx: ex, jy: ey, ex: ex + Math.cos(foreAng) * A.armLo, ey: ey + Math.sin(foreAng) * A.armLo };
     };
 
-    /* hedef-tabanlı eller (yalnız özel hâller); null => FK ile salınır */
     let handL = null, handR = null;
     if (this.aimMode && this.holdItem === 'pistol') {
       const aa = this.aimAngle;
       const ax = Math.cos(aa) * f, ay = Math.sin(aa);
-      handR = { x: shX + ax * armReach * 0.93 - f * recoil, y: shY + 4 * this.s + ay * armReach * 0.9 - recoil * 0.4 };
-      handL = { x: shX + ax * armReach * 0.78 - f * recoil * 0.7, y: shY + 7 * this.s + ay * armReach * 0.78 };
+      handR = { x: shX + ax * armReach * 0.93 - f * recoil, y: shY + 4 * s + ay * armReach * 0.9 - recoil * 0.4 };
+      handL = { x: shX + ax * armReach * 0.78 - f * recoil * 0.7, y: shY + 7 * s + ay * armReach * 0.78 };
     } else if (this.mode === 'push') {
-      handL = { x: shX + f * armReach * 0.86, y: shY + 7 * this.s };
-      handR = { x: shX + f * armReach * 0.92, y: shY + 13 * this.s };
+      handL = { x: shX + f * armReach * 0.86, y: shY + 7 * s };
+      handR = { x: shX + f * armReach * 0.92, y: shY + 13 * s };
     } else if (this.mode === 'pry') {
       const t = Math.min(1, this.pryAnim * 1.4);
       const press = Math.sin(Math.min(Math.PI, t * Math.PI));
-      handL = { x: shX + f * (armReach * 0.55), y: shY + 4 * this.s + press * 16 * this.s };
-      handR = { x: shX + f * (armReach * 0.62), y: shY + 8 * this.s + press * 16 * this.s };
+      handL = { x: shX + f * (armReach * 0.55), y: shY + 4 * s + press * 16 * s };
+      handR = { x: shX + f * (armReach * 0.62), y: shY + 8 * s + press * 16 * s };
     } else if (!this.grounded) {
-      if (this.vy < -40) {
-        handL = { x: shX - f * 12 * this.s, y: shY + armReach * 0.28 };
-        handR = { x: shX + f * 14 * this.s, y: shY + armReach * 0.18 };
-      } else {
-        handL = { x: shX - f * 15 * this.s, y: shY + armReach * 0.42 };
-        handR = { x: shX + f * 16 * this.s, y: shY + armReach * 0.38 };
-      }
+      /* havada: yükselişte kollar yukarı savrulur, düşüşte denge için yana açılır */
+      /* kalkışta iki kol öne-yukarı savrulur (itişe güç katar); koşarak sıçramada çapraz;
+         düşüşte kollar denge için öne ve hafif yukarı açılır */
+      const t = clamp((this.vy + 260) / 620, 0, 1);
+      const leap = clamp(Math.abs(this.vx) / 200, 0, 1);
+      const push = this.vy < -60 ? clamp(1 - (this.airT ?? 1) / 0.16, 0, 1) : 0;
+      const upR = { x: shX + f * armReach * 0.55, y: shY - armReach * lerp(0.35, 0.1, t) };
+      const upL = { x: shX + f * armReach * lerp(0.4, 0.25, leap), y: shY - armReach * lerp(0.25, 0.0, t) + leap * armReach * 0.7 };
+      const fallR = { x: shX + f * armReach * 0.6, y: shY + armReach * 0.05 };
+      const fallL = { x: shX - f * armReach * 0.35, y: shY + armReach * 0.1 };
+      handR = { x: lerp(upR.x, fallR.x, t), y: lerp(upR.y, fallR.y, t) };
+      handL = { x: lerp(upL.x, fallL.x, t), y: lerp(upL.y, fallL.y, t) };
+      if (push > 0) { handR.y -= push * armReach * 0.2; handL.y -= push * armReach * 0.2 * (1 - leap); }
+    } else if (skid) {
+      handL = { x: shX + f * 14 * s, y: shY + armReach * 0.35 };
+      handR = { x: shX - f * 10 * s, y: shY + armReach * 0.45 };
     }
-    /* elde eşya / fener tek kolu hedefe kilitler (diğer kol serbest salınır) */
-    if (!this.aimMode && this.mode !== 'push' && this.mode !== 'pry' && this.grounded) {
-      if (this.holdItem === 'crowbar') handR = { x: shX + f * 9 * this.s, y: shY + armReach * 0.62 };
-      else if (this.holdItem === 'pistol') handR = { x: shX + f * 8 * this.s, y: shY + armReach * 0.68 };
+    if (this.grounded && this.prepT > 0 && !this.aimMode) {
+      // hazırlık: kollar geriye çekilir (sıçramada öne savrulmak için)
+      handR = { x: shX - f * armReach * 0.45, y: shY + armReach * 0.7 };
+      handL = { x: shX - f * armReach * 0.55, y: shY + armReach * 0.65 };
+    } else if (this.grounded && this.landImpact > 0.12 && !this.aimMode && this.mode !== 'push') {
+      // iniş: kollar öne-aşağı uzanır, yükü dengeler
+      const li = this.landImpact;
+      handR = { x: shX + f * armReach * (0.35 + li * 0.3), y: shY + armReach * (0.75 - li * 0.15) };
+      handL = { x: shX + f * armReach * (0.15 + li * 0.25), y: shY + armReach * (0.8 - li * 0.1) };
     }
-    if (this.flashOn && this.grounded && this.mode !== 'push' && this.mode !== 'pry') {
-      handL = { x: shX + f * 11 * this.s, y: shY + armReach * 0.5 };
+    if (!this.aimMode && this.mode !== 'push' && this.mode !== 'pry' && this.grounded && !skid && !moving) {
+      if (this.holdItem === 'crowbar') handR = { x: shX + f * 9 * s, y: shY + armReach * 0.62 };
+      else if (this.holdItem === 'pistol') handR = { x: shX + f * 8 * s, y: shY + armReach * 0.68 };
     }
-    /* maria duruşta bir el kalçada — zarif kontrapost */
+    /* EL FENERİ: kol omuz hizasında ileri uzanır, fener ileriyi gösterir.
+       (eskiden el bel hizasındaydı ve ışık gövdenin ortasından çıkıyordu) */
+    if (this.flashOn && this.mode !== 'push' && this.mode !== 'pry') {
+      const steady = moving ? Math.sin(ph * 2) * (0.6 + runF * 1.6) * s : 0;
+      handL = { x: shX + f * armReach * (0.74 - runF * 0.1), y: shY + (4 + runF * 4) * s + steady };
+    }
     if (fem && !moving && this.grounded && !this.aimMode && this.mode !== 'push' && this.mode !== 'pry' && handL == null) {
-      handL = { x: pelvisX - f * 4 * this.s, y: pelvisY - 2 * this.s };
+      handL = { x: pelvisX - f * 4 * s, y: pelvisY - 2 * s };
     }
-    /* DURUŞTA GEVŞEK ASİMETRİK KOLLAR — manken hissini kıran ana sinyal:
-       kollar iki yanda donuk/simetrik asılı yerine, hafif bükük dinlenir; ön kol
-       gövdenin biraz önünde, arka kol biraz geride, ikisi FARKLI nefes fazında
-       salınır (biri öne-arkaya, diğeri kalkıp-iner) → ikiz manken kolları kırılır. */
     if (idle) {
       const brA = Math.sin(this.breathe * 0.85);
       const brB = Math.sin(this.breathe * 0.55 + 2.1);
-      if (handR == null) handR = { x: shX + f * (5.0 + brA * 0.8) * this.s, y: shY + armReach * 0.79 + brA * 1.0 * this.s };
-      if (handL == null) handL = { x: shX - f * (3.2 + brB * 0.5) * this.s, y: shY + armReach * 0.86 + brB * 0.8 * this.s };
+      if (handR == null) handR = { x: shX + f * (5.0 + brA * 0.8) * s, y: shY + armReach * 0.79 + brA * 1.0 * s };
+      if (handL == null) handL = { x: shX - f * (3.2 + brB * 0.5) * s, y: shY + armReach * 0.86 + brB * 0.8 * s };
     }
 
-    /* çöz: hedef varsa IK (yumuşatmalı), yoksa doğal FK salınımı */
-    const solveArm = (key, sh, hand, phase) => {
+    const solveArm = (key, sh, hand, sw) => {
       if (hand) {
         if (!this.aimMode && this.mode !== 'push' && this.mode !== 'pry') hand = this._smoothHand(key, hand, sh.x, sh.y);
-        return solveIK2(sh.x, sh.y, hand.x, hand.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+        // el gövdenin arkasında ve omuz hizasına yakınsa dirsek aşağı bakar (yukarı kırılmaz)
+        const behindHigh = (hand.x - sh.x) * f < -2 && hand.y < sh.y + armReach * 0.4;
+        const bend = (f > 0 ? 1 : -1) * (behindHigh ? -1 : 1);
+        return solveIK2(sh.x, sh.y, hand.x, hand.y, A.armUp, A.armLo, bend);
       }
-      return fkArm(sh, phase);
+      if (this._sm) delete this._sm[key];
+      return fkArm(sh, sw);
     };
-    const armL = solveArm('hL', shL, handL, ph + Math.PI);   // sol kol ↔ sağ bacak (çapraz)
-    const armR = solveArm('hR', shR, handR, ph);
+    const armL = solveArm('hL', shL, handL, oppSwing(footR));   // sol kol ↔ sağ bacak
+    const armR = solveArm('hR', shR, handR, oppSwing(footL));   // sağ kol ↔ sol bacak
 
     this._setJoints(J, { x: pelvisX, y: pelvisY }, { x: shX, y: shY }, { x: headX, y: headY }, legL, legR, armL, armR);
-    /* topuk-parmak yuvarlanışı: ayak öndeyken (basış) parmak yukarı,
-       arkadayken (itiş) topuk yukarı — insan yürüyüşünün imzası */
-    if (this.grounded && moving) {
-      const roll = 0.5 + runF * 0.25;
-      J.footL.ang = -Math.cos(ph) * roll;
-      J.footR.ang = -Math.cos(ph + Math.PI) * roll;
-    }
+    J.footL.ang = footAngL;
+    J.footR.ang = footAngR;
     this.render(J, lean);
   }
 
@@ -626,10 +943,10 @@ class HumanRig {
     if (!handLT) handLT = { x: neck.x - f * 2 * this.s, y: neck.y + armReach * 0.78 };
     if (!handRT) handRT = { x: neck.x + f * 3 * this.s, y: neck.y + armReach * 0.78 };
 
-    const legL = solveIK2(pelvis.x - A.hipW * 0.4 * f, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
-    const legR = solveIK2(pelvis.x + A.hipW * 0.4 * f, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
-    const armL = solveIK2(neck.x - A.shW * 0.45 * f, neck.y + 1, handLT.x, handLT.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
-    const armR = solveIK2(neck.x + A.shW * 0.45 * f, neck.y + 1, handRT.x, handRT.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const legL = solveIK2(pelvis.x - A.hipW * 0.4 * f, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.4 * f, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const armL = solveIK2(neck.x - A.shW * 0.45 * f, neck.y + 1, handLT.x, handLT.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armR = solveIK2(neck.x + A.shW * 0.45 * f, neck.y + 1, handRT.x, handRT.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
 
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
     this.render(J, lean);
@@ -654,7 +971,7 @@ class HumanRig {
     const kick = swimming ? 1 : 0.4;
     const footL = { x: pelvis.x - f * (A.legUp + A.legLo) * 0.8, y: pelvis.y + Math.sin(ph * 2) * 11 * this.s * kick + 4 };
     const footR = { x: pelvis.x - f * (A.legUp + A.legLo) * 0.85, y: pelvis.y + Math.sin(ph * 2 + Math.PI) * 11 * this.s * kick + 6 };
-    const legL = solveIK2(pelvis.x, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
+    const legL = solveIK2(pelvis.x, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
     const legR = solveIK2(pelvis.x, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
 
     // kollar: serbest stil kulaç (daire)
@@ -668,7 +985,7 @@ class HumanRig {
       x: neck.x + (Math.cos(strokeR) * 0.9 + 0.3) * armReach * 0.8 * f,
       y: neck.y + Math.sin(strokeR) * armReach * 0.55 + 6,
     };
-    const armL = solveIK2(neck.x - 2 * f, neck.y, handL.x, handL.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const armL = solveIK2(neck.x - 2 * f, neck.y, handL.x, handL.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
     const armR = solveIK2(neck.x + 2 * f, neck.y, handR.x, handR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
 
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
@@ -680,21 +997,47 @@ class HumanRig {
     const A = this.A, J = this.joints;
     const ph = this.phase;
     const lx = this.x;   // merdiven ekseni
-    const pelvis = { x: lx - 6 * this.s, y: this.y };
-    const neck = { x: lx - 3 * this.s, y: pelvis.y - A.torso * 0.97 };
-    const head = { x: neck.x + 2 * this.s, y: neck.y - A.headR * 1.5 };
-    // eller üstte değişimli
-    const handL = { x: lx + 3 * this.s, y: neck.y - 14 * this.s - Math.max(0, Math.sin(ph)) * 13 * this.s };
-    const handR = { x: lx + 3 * this.s, y: neck.y - 14 * this.s - Math.max(0, Math.sin(ph + Math.PI)) * 13 * this.s };
-    // ayaklar basamakta değişimli
-    const footL = { x: lx + 2 * this.s, y: pelvis.y + A.legUp + A.legLo * 0.62 - Math.max(0, Math.sin(ph)) * 15 * this.s };
-    const footR = { x: lx + 2 * this.s, y: pelvis.y + A.legUp + A.legLo * 0.72 - Math.max(0, Math.sin(ph + Math.PI)) * 15 * this.s };
+    /* çapraz tırmanış: sol el ile sağ ayak birlikte uzanır (gerçek merdiven ritmi);
+       uzanan uzuv kısa bir yay çizer, tutan uzuv basamakta sabit kalır */
+    const s = this.s;
+    const reachA = Math.max(0, Math.sin(ph)), reachB = Math.max(0, Math.sin(ph + Math.PI));
+    const sway = Math.sin(ph) * 1.4 * s;
+    const pelvis = { x: lx - 6 * s + sway, y: this.y };
+    const neck = { x: lx - 2.5 * s + sway * 0.5, y: pelvis.y - A.torso * 0.97 };
+    const head = { x: neck.x + 2.5 * s, y: neck.y - A.headR * 1.45 - reachA * 1 * s };
+    const handL = { x: lx + 3 * s + reachA * 2 * s, y: neck.y - 12 * s - reachA * 15 * s };
+    const handR = { x: lx + 3 * s + reachB * 2 * s, y: neck.y - 12 * s - reachB * 15 * s };
+    const footL = { x: lx + 2 * s + reachB * 3 * s, y: pelvis.y + A.legUp + A.legLo * 0.66 - reachB * 16 * s };
+    const footR = { x: lx + 2 * s + reachA * 3 * s, y: pelvis.y + A.legUp + A.legLo * 0.66 - reachA * 16 * s };
     const legL = solveIK2(pelvis.x, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, -1);
     const legR = solveIK2(pelvis.x, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, -1);
     const armL = solveIK2(neck.x, neck.y, handL.x, handL.y, A.armUp, A.armLo, 1);
     const armR = solveIK2(neck.x, neck.y, handR.x, handR.y, A.armUp, A.armLo, 1);
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
     this.render(J, 0);
+  }
+
+  /* ============ KAYMA (koşarken eğil) ============
+     ayaklar önde yere uzanır, gövde geriye yaslanır, arka el yere sürtünür */
+  drawSlide() {
+    const A = this.A, f = this.facing, J = this.joints, s = this.s;
+    const gY = this.groundY;
+    const pelvis = { x: this.x - f * 4 * s, y: gY - A.legUp * 0.42 };
+    const lean = -f * 0.62;
+    const neck = { x: pelvis.x + Math.sin(lean) * A.torso, y: pelvis.y - Math.cos(lean) * A.torso };
+    const head = { x: neck.x + f * A.headR * 0.9, y: neck.y - A.headR * 1.3 };
+    const footF = { x: pelvis.x + f * (A.legUp + A.legLo) * 0.93, y: gY - 2 * s };
+    const footB = { x: pelvis.x + f * 6 * s, y: gY - 1 };
+    const legL = solveIK2(pelvis.x, pelvis.y, footF.x, footF.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x, pelvis.y, footB.x, footB.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const armReach = A.armUp + A.armLo;
+    const handB = { x: neck.x - f * armReach * 0.55, y: gY - 2 * s };
+    const handF = { x: neck.x + f * armReach * 0.6, y: neck.y + 2 * s };
+    const armL = solveIK2(neck.x, neck.y, handB.x, handB.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armR = solveIK2(neck.x, neck.y, handF.x, handF.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
+    J.footL.ang = -0.5;
+    this.render(J, lean);
   }
 
   /* ============ ÇÖMELİK SIZMA (eğilme) ============
@@ -735,8 +1078,8 @@ class HumanRig {
     const swing = moving ? Math.cos(ph) * 4 * this.s : 0;
     const handL = { x: neck.x + f * (12 * this.s + swing), y: neck.y + armReach * 0.55 };
     const handR = { x: neck.x + f * (4 * this.s - swing), y: neck.y + armReach * 0.66 };
-    const armL = solveIK2(neck.x - 1.5 * f, neck.y, handL.x, handL.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
-    const armR = solveIK2(neck.x + 1.5 * f, neck.y, handR.x, handR.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const armL = solveIK2(neck.x - 1.5 * f, neck.y, handL.x, handL.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armR = solveIK2(neck.x + 1.5 * f, neck.y, handR.x, handR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
 
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
     this.render(J, leanA);
@@ -796,6 +1139,16 @@ class HumanRig {
           { x: f * (A.armUp + A.armLo) * 0.99, y: -A.torso * 1.1 }, { x: f * 16, y: -4 },
           { x: -f * 6, y: 0 }, { x: -f * 20, y: 1 });
         break;
+      case 'peerDown': // çukurun kenarında diz çöküp aşağı uzanma
+        P.v = def(-A.standH * 0.5, { x: f * 13, y: -A.torso * 0.72 }, { x: f * 16, y: 3 },
+          { x: f * 26, y: 14 }, { x: f * 10, y: -3 },
+          { x: -f * 3, y: 0 }, { x: -f * 18, y: 1 });
+        break;
+      case 'bound': // bombaya bağlı — diz çökmüş, eller arkada
+        P.v = def(-A.standH * 0.56, { x: -f * 1, y: -A.torso * 0.9 }, { x: f * 3, y: 2 + Math.sin(this.breathe * 1.3) * 1.5 },
+          { x: -f * 9, y: -6 }, { x: -f * 7, y: -4 },
+          { x: f * 4, y: 0 }, { x: -f * 15, y: 0 });
+        break;
       case 'standSad':
       default:
         P.v = def(-A.standH + 2, { x: f * 1, y: -A.torso * 0.93 }, { x: f * 6, y: -6 + Math.sin(this.breathe * 1.4) },
@@ -812,10 +1165,10 @@ class HumanRig {
     const footLW = { x: pelvis.x + v.fl.x * this.s, y: gY + (v.fl.y || 0) };
     const footRW = { x: pelvis.x + v.fr.x * this.s, y: gY + (v.fr.y || 0) };
 
-    const legL = solveIK2(pelvis.x - A.hipW * 0.4 * f, pelvis.y, footLW.x, footLW.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
-    const legR = solveIK2(pelvis.x + A.hipW * 0.4 * f, pelvis.y, footRW.x, footRW.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
-    const armL = solveIK2(neck.x - A.shW * 0.4 * f, neck.y, handLW.x, handLW.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
-    const armR = solveIK2(neck.x + A.shW * 0.4 * f, neck.y, handRW.x, handRW.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const legL = solveIK2(pelvis.x - A.hipW * 0.4 * f, pelvis.y, footLW.x, footLW.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const legR = solveIK2(pelvis.x + A.hipW * 0.4 * f, pelvis.y, footRW.x, footRW.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    const armL = solveIK2(neck.x - A.shW * 0.4 * f, neck.y, handLW.x, handLW.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armR = solveIK2(neck.x + A.shW * 0.4 * f, neck.y, handRW.x, handRW.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
 
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
     this.render(J, 0);
@@ -833,7 +1186,7 @@ class HumanRig {
     const legL = solveIK2(pelvis.x, pelvis.y, footL.x, footL.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
     const legR = solveIK2(pelvis.x, pelvis.y, footR.x, footR.y, A.legUp, A.legLo, f > 0 ? 1 : -1);
     const armL = solveIK2(neck.x, neck.y, handL.x, handL.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
-    const armR = solveIK2(neck.x, neck.y, handR.x, handR.y, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    const armR = solveIK2(neck.x, neck.y, handR.x, handR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armR);
     this.render(J, 0);
   }
@@ -853,10 +1206,40 @@ class HumanRig {
     J.handL = { x: armL.ex, y: armL.ey }; J.handR = { x: armR.ex, y: armR.ey };
   }
 
+  /* lurker: dizlere sarkan uzun, kemikli parmaklar */
+  _fingers(g, elb, hand, col) {
+    const s = this.s;
+    const a = Math.atan2(hand.y - elb.y, hand.x - elb.x);
+    g.lineStyle(1.1 * s, col, 1);
+    for (let i = -1; i <= 1; i++) {
+      const fa = a + i * 0.28 + Math.sin(this.breathe * 3 + i) * 0.08;
+      const L = (9 + (i === 0 ? 3 : 0)) * s;
+      const mx = hand.x + Math.cos(fa) * L * 0.55, my = hand.y + Math.sin(fa) * L * 0.55;
+      g.beginPath(); g.moveTo(hand.x, hand.y); g.lineTo(mx, my);
+      g.lineTo(mx + Math.cos(fa + 0.35 * this.facing) * L * 0.5, my + Math.sin(fa + 0.35 * this.facing) * L * 0.5);
+      g.strokePath();
+    }
+  }
+
   /* ============ GERÇEK İNSAN SİLUET RENDERI ============ */
   render(J, lean) {
     const g = this.gfx, A = this.A, col = this.color, s = this.s, f = this.facing;
     const fem = this.variant === 'maria';
+
+    /* poz geçişi: eski iskeletten yenisine eklem eklem karışım */
+    if (this.mode !== 'ragdoll') {
+      if (!this._noBlend && this._blendFrom) {
+        const k = smooth(this._blendT / this._blendDur);
+        for (const key in J) {
+          const a0 = this._blendFrom[key], b0 = J[key];
+          if (!a0 || !b0) continue;
+          J[key] = { x: lerp(a0.x, b0.x, k), y: lerp(a0.y, b0.y, k), ang: lerp(a0.ang || 0, b0.ang || 0, k) };
+        }
+      }
+      const out = {};
+      for (const key in J) if (J[key]) out[key] = { x: J[key].x, y: J[key].y, ang: J[key].ang };
+      this._lastOut = out;
+    }
 
     /* incelen uzuv segmenti — dolgulu dörtgen + eklem yuvarlatma */
     const seg = (a, b, w0, w1) => {
@@ -907,9 +1290,11 @@ class HumanRig {
     /* GERÇEK VÜCUT KÜTLESİ — kürdan değil:
        kai/asker: kaslı kalın uzuvlar; maria: dolgun uyluk + ince bilek (kadınsı kontrast).
        Bacaklar kullanıcı isteğiyle biraz daha iri. */
-    const bulky = this.variant !== 'maria';
-    const thW = (fem ? 10.2 : 11.4) * s, caW = (fem ? 6.2 : 7.2) * s, anW = (fem ? 3.3 : 4.3) * s;
-    const uaW = (fem ? 4.8 : 6.8) * s, faW = (fem ? 3.7 : 5.4) * s, wrW = (fem ? 2.5 : 3.5) * s;
+    const lurk = this.variant === 'lurker';
+    const bulky = this.variant !== 'maria' && !lurk;
+    let thW = (fem ? 10.2 : 11.4) * s, caW = (fem ? 6.2 : 7.2) * s, anW = (fem ? 3.3 : 4.3) * s;
+    let uaW = (fem ? 4.8 : 6.8) * s, faW = (fem ? 3.7 : 5.4) * s, wrW = (fem ? 2.5 : 3.5) * s;
+    if (lurk) { thW = 5.6 * s; caW = 3.8 * s; anW = 2.0 * s; uaW = 3.4 * s; faW = 2.7 * s; wrW = 1.7 * s; }
 
     /* kas çıkıntıları: uyluk, baldır (gastrocnemius), omuz (deltoid), pazu */
     const muscle = (a, b, t, r) => {
@@ -939,6 +1324,7 @@ class HumanRig {
     seg(J.neck, J.elbL, uaW, faW); armMuscles(J.neck, J.elbL);
     seg(J.elbL, J.handL, faW, wrW);
     g.fillCircle(J.handL.x, J.handL.y, (fem ? 2.4 : 3.0) * s);
+    if (lurk) this._fingers(g, J.elbL, J.handL, col);
 
     /* ---- sırt çantası (kai) — gövdeden önce, arkada ---- */
     if (this.variant === 'kai' && this.mode !== 'ragdoll') {
@@ -1000,10 +1386,36 @@ class HumanRig {
         g.lineTo(p.x + nx * hw * 1.05, p.y + ny * hw);
         g.closePath(); g.fillPath();
       }
-      // askeri yelek
+      /* ASKERİ TEÇHİZAT — plaka taşıyıcı yelek (kutu formu), göğüste şarjör
+         cepleri, sırtta telsizli çanta + kırbaç anten. Siluetten "düzenli ordu"
+         okunur: başlıklı/maskeli düzensiz adam değil. */
       if (this.variant === 'soldier') {
-        g.fillCircle(cx, cy, sw * 1.22);
-        g.fillRect(cx - 5 * s, cy - 3 * s, 10 * s, 9 * s);
+        const P2 = (t, side) => ({ x: p.x + dx * t + nx * side, y: p.y + dy * t + ny * side });
+        const vest = [P2(0.32, -sw * 1.18), P2(0.32, sw * 1.12), P2(0.92, sw * 1.12), P2(0.95, -sw * 1.05)];
+        g.beginPath(); g.moveTo(vest[0].x, vest[0].y);
+        for (let i = 1; i < 4; i++) g.lineTo(vest[i].x, vest[i].y);
+        g.closePath(); g.fillPath();
+        // göğüs şarjör cepleri (bakış yönünde dışa taşar)
+        for (let i = 0; i < 3; i++) {
+          const t0 = 0.42 + i * 0.13;
+          const fx2 = p.x + dx * t0 + f * (A.shW * 1.18), fy2 = p.y + dy * t0;
+          g.fillRoundedRect(Math.min(fx2, fx2 + f * 3.4 * s) - 0.2 * s, fy2 - 2.6 * s, 3.8 * s, 5.4 * s, 1 * s);
+        }
+        // bel kemeri + yan çanta
+        const belt = P2(0.12, 0);
+        g.fillRect(belt.x - hw * 1.1, belt.y - 2 * s, hw * 2.2, 4 * s);
+        g.fillRoundedRect(belt.x - f * hw * 1.2 - 3 * s, belt.y - 1 * s, 6 * s, 8 * s, 1.5 * s);
+        // sırt çantası + telsiz
+        const bx = p.x + dx * 0.62 - f * (A.shW * 1.35), by = p.y + dy * 0.62;
+        g.fillRoundedRect(bx - 5.5 * s, by - 10 * s, 11 * s, 19 * s, 3 * s);
+        // kırbaç anten — yürürken hafif salınır
+        const sway = Math.sin(this.breathe * 3.1) * 2.2 * s + clamp(-this.vx * 0.02, -5, 5) * s;
+        g.lineStyle(1.1 * s, col, 1);
+        g.beginPath();
+        g.moveTo(bx - f * 2.5 * s, by - 9 * s);
+        g.lineTo(bx - f * 4 * s + sway * 0.4, by - 24 * s);
+        g.lineTo(bx - f * 6 * s + sway, by - 38 * s);
+        g.strokePath();
       }
     }
 
@@ -1056,14 +1468,33 @@ class HumanRig {
         g.lineTo(h.x + f * A.headR * 0.68, h.y + A.headR * 0.45);
         g.lineTo(h.x + f * A.headR * 0.15, h.y - A.headR * 0.62);
         g.closePath(); g.fillPath();
+      } else if (lurk) {
+        // uzamış, hafif yana yatık kafatası — insan kafasına "neredeyse" benzer
+        const tilt = Math.sin(this.breathe * 0.7) * 0.25 + 0.35;
+        g.fillEllipse(h.x - f * A.headR * 0.2, h.y - A.headR * 0.9, A.headR * 1.7, A.headR * 3.0);
+        g.fillCircle(h.x + f * A.headR * 0.5 * Math.cos(tilt), h.y + A.headR * 0.6, A.headR * 0.55);
       } else if (this.variant === 'soldier') {
-        // miğfer
+        /* modern muharebe miğferi: yüksek kubbe, kulak kesimli kenar,
+           önde gece görüş (NVG) bağlantısı, yanda ray çıkıntısı */
+        const R = A.headR;
         g.beginPath();
-        g.arc(h.x, h.y - A.headR * 0.15, A.headR * 1.22, Math.PI, 0);
-        g.lineTo(h.x + A.headR * 1.22, h.y + A.headR * 0.32);
-        g.lineTo(h.x - A.headR * 1.22, h.y + A.headR * 0.32);
+        g.arc(h.x - f * R * 0.08, h.y - R * 0.2, R * 1.28, Math.PI, 0);
+        g.lineTo(h.x - f * R * 0.08 + R * 1.28, h.y + R * 0.05);
+        g.lineTo(h.x - f * R * 0.08 - R * 1.28, h.y + R * 0.05);
         g.closePath(); g.fillPath();
-        g.fillRect(h.x - A.headR * 0.4 + f * A.headR * 0.7, h.y + A.headR * 0.1, A.headR * 0.8, A.headR * 0.35); // siperlik
+        // ense koruması (arkada aşağı iner), alın kesimi (önde yukarıda biter)
+        g.fillRect(h.x - f * R * 1.36 - (f < 0 ? R * 0.5 : 0), h.y - R * 0.1, R * 0.5, R * 0.7);
+        // NVG montajı
+        g.fillRect(h.x + f * R * 0.7 - (f < 0 ? R * 0.55 : 0), h.y - R * 0.95, R * 0.55, R * 0.42);
+        // yan ray
+        g.fillRect(h.x - R * 0.7, h.y - R * 0.55, R * 1.4, R * 0.22);
+        // gözlük bandı — soğuk ince yansıma
+        g.fillStyle(0x3a4250, 0.85);
+        g.fillRect(h.x + f * R * 0.35 - (f < 0 ? R * 0.75 : 0), h.y - R * 0.12, R * 0.75, R * 0.26);
+        g.fillStyle(col, 1);
+        // dizlik (iri siluet)
+        g.fillCircle(J.kneeR.x + f * 1.5 * s, J.kneeR.y, 4.2 * s);
+        g.fillCircle(J.kneeL.x + f * 1.5 * s, J.kneeL.y, 4.0 * s);
       } else {
         // kai: dağınık kısa saç
         g.fillCircle(h.x - f * A.headR * 0.2, h.y - A.headR * 0.5, A.headR * 0.92);
@@ -1081,14 +1512,24 @@ class HumanRig {
     seg(J.neck, J.elbR, uaW, faW); armMuscles(J.neck, J.elbR);
     seg(J.elbR, J.handR, faW, wrW);
     g.fillCircle(J.handR.x, J.handR.y, (fem ? 2.4 : 3.0) * s);
+    if (lurk) this._fingers(g, J.elbR, J.handR, col);
 
-    /* ---- Limbo imzası: soluk parlayan gözler (kai & maria) ---- */
-    if (this.mode !== 'ragdoll' && this.variant !== 'soldier') {
-      const h = J.head;
-      const blink = Math.sin(this.breathe * 0.9 + 2) > 0.97 ? 0 : 1;
-      g.fillStyle(0xd6d9d0, 0.85 * blink);
-      g.fillCircle(h.x + f * A.headR * 0.5, h.y - A.headR * 0.08, 1.25 * s);
-      g.fillCircle(h.x + f * A.headR * 0.05, h.y - A.headR * 0.12, 1.0 * s);
+    /* (karakterlerde parlayan göz yok — siluet okunurluğu kenar ışığıyla sağlanır) */
+    /* kai: boyunda Maria'nın kırmızı atkısı (bölüm 1'de yerden alır) — dünyadaki tek renk,
+       koşarken arkaya savrulur */
+    if (this.variant === 'kai' && this.scarf && this.mode !== 'ragdoll') {
+      const n = J.neck;
+      const drift = clamp(-this.vx * 0.03, -10, 10) * s;
+      const flap = Math.sin(this.breathe * (Math.abs(this.vx) > 60 ? 13 : 3)) * (1.5 + Math.abs(drift) * 0.25) * s;
+      g.fillStyle(0x6e2b2b, 0.95);
+      g.fillEllipse(n.x, n.y + 0.5 * s, A.shW * 1.5, 4.2 * s);
+      g.beginPath();
+      g.moveTo(n.x - f * 2 * s, n.y);
+      g.lineTo(n.x - f * 8 * s + drift * 0.6, n.y + 6 * s + flap * 0.5);
+      g.lineTo(n.x - f * 13 * s + drift, n.y + 9 * s + flap);
+      g.lineTo(n.x - f * 11 * s + drift, n.y + 12 * s + flap);
+      g.lineTo(n.x - f * 4 * s + drift * 0.4, n.y + 5 * s);
+      g.closePath(); g.fillPath();
     }
 
     /* ---- hacim ışığı: üst-arka kenarlara soluk form aydınlığı (3B hissi) ---- */
@@ -1147,58 +1588,104 @@ class HumanRig {
       }
     }
     if (this.flashOn) {
-      // sol elde fener gövdesi
+      /* sol elde fener — gövde ileri bakar, hafif aşağı eğik; ışık TAM merceğinden çıkar */
       const h = J.handL;
+      const ang = this.flashAngle ?? 0.06;
+      const ca = Math.cos(ang) * f, sa = Math.sin(ang);
+      const nx = -sa, ny = ca * f;                     // gövdeye dik birim (ekran)
+      const p = (along, side) => ({ x: h.x + ca * along * s + nx * side * s * f, y: h.y + sa * along * s + ny * side * s * f });
+      const q = [p(-3, -1.8), p(7, -1.8), p(7.5, -2.8), p(11, -2.8), p(11, 2.8), p(7.5, 2.8), p(7, 1.8), p(-3, 1.8)];
       g.fillStyle(col, 1);
-      g.fillRect(h.x - f * 1 * s, h.y - 3 * s, f * 9 * s, 5 * s);
-      g.fillStyle(0xf5eeda, 0.95);
-      g.fillRect(h.x + f * 8 * s, h.y - 3.4 * s, f * 2.2 * s, 5.8 * s);
-    }
+      g.beginPath(); g.moveTo(q[0].x, q[0].y);
+      for (let i = 1; i < q.length; i++) g.lineTo(q[i].x, q[i].y);
+      g.closePath(); g.fillPath();
+      const lens = p(11.3, 0);
+      g.fillStyle(0xfff4dc, 0.95);
+      g.fillCircle(lens.x, lens.y, 2.3 * s);
+      this.flashPoint = { x: lens.x, y: lens.y, angle: ang };
+    } else this.flashPoint = null;
 
-    /* ---- asker tüfeği ---- */
-    if (this.variant === 'soldier') {
-      const hR = J.handR, hL = J.handL;
-      g.lineStyle(3.6 * s, col, 1);
-      const gx = (hR.x + hL.x) / 2, gy = (hR.y + hL.y) / 2 - 2;
-      g.beginPath();
-      g.moveTo(gx - f * 10 * s, gy + 5 * s);
-      g.lineTo(gx + f * 22 * s, gy - 3 * s);
-      g.strokePath();
-      g.lineStyle(2.4 * s, col, 1);
-      g.beginPath(); g.moveTo(gx - f * 4 * s, gy + 1); g.lineTo(gx - f * 6 * s, gy + 8 * s); g.strokePath();
-      g.beginPath(); g.moveTo(gx + f * 4 * s, gy - 0.5); g.lineTo(gx + f * 3 * s, gy + 6 * s); g.strokePath(); // şarjör
-    }
   }
 }
 
-/* asker rig'i — eller tüfekte sabit */
+/* ============================================================
+   ASKER RIG — tüfek gerçek tutuşla: dipçik omuz cebinde, sağ el
+   kabzada, sol el ön tutamakta. Devriyede "alçak hazır" (namlu
+   aşağı), alarmda nişan. Tüfekte taktik fener — ışık namludan çıkar.
+   ============================================================ */
 class SoldierRig extends HumanRig {
   constructor(scene, opts = {}) {
-    super(scene, Object.assign({ variant: 'soldier' }, opts));
+    super(scene, Object.assign({ variant: 'soldier', rimColor: 0x7d8696 }, opts));
     this.aimAngle = 0;
-    this.hasCarKey = false;   // bilekte araba anahtarı — yankesicilik hedefi
+    this.ready = 0;            // 0 alçak hazır .. 1 nişan
+    this.readyTarget = 0;
+    this.hasCarKey = false;    // bilekte araba anahtarı — yankesicilik hedefi
+    this.muzzle = null;        // { x, y, angle } — taktik fener / mermi çıkışı
   }
   draw() {
-    if (this.mode === 'ragdoll' || this.mode === 'pose' || this.action) return super.draw();
+    if (this.mode === 'ragdoll' || this.mode === 'pose' || this.action) { this.muzzle = null; return super.draw(); }
     const keep = this.holdItem; this.holdItem = null;
     super.draw();
     this.holdItem = keep;
-    const J = this.joints, A = this.A, f = this.facing;
+    const J = this.joints, A = this.A, f = this.facing, s = this.s;
     if (!J.neck) return;
-    const aimY = Math.sin(this.aimAngle) * 14;
-    const gunX = J.neck.x + f * 13 * this.s, gunY = J.neck.y + 10 * this.s + aimY;
-    const armL = solveIK2(J.neck.x - A.shW * 0.4 * f, J.neck.y, gunX + f * 7 * this.s, gunY - 2, A.armUp, A.armLo, f > 0 ? -1 : 1);
-    const armR = solveIK2(J.neck.x + A.shW * 0.4 * f, J.neck.y, gunX - f * 3 * this.s, gunY + 2, A.armUp, A.armLo, f > 0 ? -1 : 1);
+    this.ready = lerp(this.ready, this.readyTarget, 1 - Math.exp(-(this._dt || 0.016) * 7));
+    const rd = this.ready;
+    /* namlu açısı: alçak hazırda ~32° aşağı, nişanda hedefe */
+    const ang = lerp(0.56, clamp(this.aimAngle, -0.5, 0.5), rd);
+    const ca = Math.cos(ang) * f, sa = Math.sin(ang);
+    const px = -sa * f, py = Math.cos(ang);             // namluya dik (aşağı yön +)
+    const butt = {
+      x: J.neck.x + f * lerp(1.5 * s, A.shW * 0.55, rd),
+      y: J.neck.y + lerp(9, 4, rd) * s,
+    };
+    const at = (u, v = 0) => ({ x: butt.x + ca * u * s + px * v * s, y: butt.y + sa * u * s + py * v * s });
+    const grip = at(9.5, 3.2), fore = at(23, 2.2);
+    const shL = { x: J.neck.x - A.shW * 0.42 * f, y: J.neck.y + 1 };
+    const shR = { x: J.neck.x + A.shW * 0.42 * f, y: J.neck.y + 1 };
+    const armR = solveIK2(shR.x, shR.y, grip.x, grip.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const armL = solveIK2(shL.x, shL.y, fore.x, fore.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
     J.elbL = { x: armL.jx, y: armL.jy }; J.handL = { x: armL.ex, y: armL.ey };
     J.elbR = { x: armR.jx, y: armR.jy }; J.handR = { x: armR.ex, y: armR.ey };
+    /* nişanda baş namluya doğru eğilir (yanak dipçikte) */
+    if (rd > 0.3) { J.head.x += f * 1.6 * rd * s; J.head.y += 1.4 * rd * s; }
     this.gfx.clear();
+    this._noBlend = true;            // karışım ilk render'da uygulandı; ikinci kez uygulama
     this.render(J, 0);
-    // bilekteki araba anahtarı parıltısı
+    this._noBlend = false;
+    this.drawRifle(at, ang);
     if (this.hasCarKey) {
       const g = this.gfx, h = J.handR;
       const t = this.scene.time.now * 0.004;
       g.fillStyle(0xd8d2b8, 0.5 + Math.sin(t) * 0.3);
-      g.fillCircle(h.x - f * 3 * this.s, h.y + 3 * this.s, 2);
+      g.fillCircle(h.x - f * 3 * s, h.y + 3 * s, 2);
     }
+  }
+  drawRifle(at, ang) {
+    const g = this.gfx, col = this.color, s = this.s;
+    const poly = (pts) => {
+      g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.closePath(); g.fillPath();
+    };
+    g.fillStyle(col, 1);
+    poly([at(-2, -1.6), at(8, -1.6), at(8, 1.0), at(2, 3.6), at(-2, 3.6)]);   // dipçik
+    poly([at(7, -2.2), at(21, -2.2), at(21, 2.0), at(7, 2.0)]);               // gövde
+    poly([at(11, 1.5), at(13.5, 1.5), at(12.5, 5.5), at(10.5, 5.2)]);         // kabza
+    poly([at(15, 1.8), at(18.5, 1.8), at(19.5, 8.2), at(16.5, 8.6)]);         // şarjör
+    poly([at(21, -1.7), at(31, -1.7), at(31, 1.7), at(21, 1.7)]);             // el kundağı
+    poly([at(31, -0.7), at(39, -0.7), at(39, 0.7), at(31, 0.7)]);             // namlu
+    poly([at(39, -1.1), at(41.5, -1.1), at(41.5, 1.1), at(39, 1.1)]);         // susturucu ağzı
+    poly([at(12, -2.2), at(18, -2.2), at(17.5, -4.6), at(12.5, -4.6)]);       // nişangâh
+    poly([at(26, 1.6), at(30, 1.6), at(30, 3.6), at(26, 3.6)]);               // taktik fener
+    const lens = at(30.3, 2.6);
+    g.fillStyle(0xeef0f4, this.lightOn === false ? 0.15 : 0.9);
+    g.fillCircle(lens.x, lens.y, 1.3 * s);
+    if (this.recoilT > 0.1) {
+      const m = at(43, 0);
+      g.fillStyle(0xfff2d8, (this.recoilT - 0.1) * 5);
+      g.fillCircle(m.x, m.y, 4.5 * s);
+    }
+    this.muzzle = { x: at(41.5, 0).x, y: at(41.5, 0).y, lx: lens.x, ly: lens.y, angle: ang };
   }
 }

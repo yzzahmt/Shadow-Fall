@@ -140,7 +140,7 @@ class LightSystem {
     this.rt = scene.add.renderTexture(0, 0, W, H)
       .setOrigin(0, 0).setScrollFactor(0).setDepth(848).setVisible(false);
     this._dot = scene.make.image({ key: 'lightHalo', add: false });
-    this._cone = scene.make.image({ key: 'lightCone', add: false }).setOrigin(0.06, 0.5);
+    this._cone = scene.make.image({ key: 'lightCone', add: false }).setOrigin(8 / 480, 0.5);   // koni ucu = dokunun 8. pikseli → ışık tam mercekten başlar
   }
 
   static ensureTextures(scene) {
@@ -227,19 +227,25 @@ class LightSystem {
 
   update(time) {
     const dark = this.darkness;
-    if (dark < 0.02) { this.rt.setVisible(false); return; }
+    if (dark < 0.02) { this.rt.setVisible(false); this.flash = 0; return; }
     const cam = this.scene.cameras.main;
     const rt = this.rt;
     rt.setVisible(true);
     rt.clear();
+    /* şimşek anı: karanlık bir an çekilir, dünya siluet olarak belirir */
+    const fl = this.flash ?? 0;
+    this.flash = Math.max(0, fl - 0.05);
     // zifiri perdelerde neredeyse tam siyah → fener olmadan görülmez
-    rt.fill(0x000103, Math.min(0.995, dark > 0.85 ? 0.93 + (dark - 0.85) * 0.46 : dark));
+    rt.fill(0x01030a, Math.min(0.995, dark > 0.85 ? 0.93 + (dark - 0.85) * 0.46 : dark) * (1 - fl * 0.7));
     for (const l of this.lights) {
       if (!l.on) continue;
-      let inten = l.intensity;
-      if (l.flicker) inten *= (Math.random() < l.flicker ? 0.25 : 0.92 + Math.random() * 0.08);
       const sx = (l.x - cam.scrollX) * cam.zoom + cam.width * (1 - cam.zoom) / 2;
       const sy = (l.y - cam.scrollY) * cam.zoom + cam.height * (1 - cam.zoom) / 2;
+      /* ekran dışındaki ışıkları atla (çukur ışıkları vb. çoğaldı — boşuna çizim yok) */
+      const reach = l.r * cam.zoom * (l.type === 'cone' ? 2.3 : 1.2);
+      if (sx < -reach || sx > cam.width + reach || sy < -reach || sy > cam.height + reach) continue;
+      let inten = l.intensity;
+      if (l.flicker) inten *= (Math.random() < l.flicker ? 0.25 : 0.92 + Math.random() * 0.08);
       if (l.type === 'cone') {
         this._cone.setScale((l.r / 220) * cam.zoom * inten, (l.r / 260) * cam.zoom);
         this._cone.setRotation(l.facing > 0 ? (l.angle ?? 0) : Math.PI - (l.angle ?? 0));

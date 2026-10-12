@@ -1,0 +1,98 @@
+================================================================
+ SHADOW FALL — v6.0 GELİŞTİRME NOTU
+ Yapılanlar ve yapılacaklar · 12 Ekim 2026
+ (Ayrıntılı oyun dokümanı: OYUN_NOTLARI.txt)
+================================================================
+
+
+YAPILANLAR
+----------------------------------------------------------------
+
+1) Görünmeyen çukur hatası
+   Sorun: Karakter yürürken görünmeyen bir çukura düşüp ölüyordu.
+   Sebep:
+     • Karanlık katmanı (en az %66) altında zemin de boşluk da aynı
+       siyahtı; çukur ayırt edilemiyordu.
+     • Zemin şeridinin sağ ucu çapraz kesiliyordu; kenar, fiziksel
+       kenardan 26 px'e kadar önce bitmiş görünüyordu.
+   Çözüm:
+     • Her ölümcül boşluktan soğuk sis yükseliyor ve kenarı hafifçe
+       aydınlatıyor; kenarlar ufalanmış toprak ve sarkan köklerle bitiyor.
+     • Zemin sırtında ince ay ışığı çizgisi var; zemin bitince çizgi de bitiyor.
+     • Diken çukurları aydınlatılıyor.
+     • Yürürken uçurum kenarında durup sendeliyor; geçmek için zıplamak gerek.
+     • Koşarken zıplamadan düşerse refleksle kenara tutunuyor.
+
+2) Animasyon ve fizik
+     • Yeni: kenara tutunma, kenardan yukarı tırmanma, kenarda
+       sendeleme, sert inişte omuz üstü yuvarlanma.
+     • Tüm hareket modları arasında iskelet karışımı (0.15 sn): eğilme,
+       iniş, tırmanma ve eylemler "pat" diye değil eriyerek geçiyor;
+       yön değişimi gövdenin kendi etrafında dönmesi gibi görünüyor.
+     • Merdivende çapraz tırmanış (sol el + sağ ayak birlikte).
+     • İtme kutularının kenarına tutunulabiliyor; kol→merdiven
+       bulmacasındaki duvarlar tutunmaya kapalı (bulmaca atlanmasın).
+
+3) Hikâye
+     • Hikâye yalnız girişte ve son bölümde anlatılıyor:
+       ormanda yürürken deprem olur, yer yarılır, Maria yarığa düşer,
+       Kai peşinden atlar. Gözünü açtığında Maria yoktur.
+     • Giriş sinematiği yeniden yazıldı (sarsıntı → çatlak → çöküş → atlayış).
+     • Bölüm 1 açılışı: Kai yarığın dibinde baygın uyanır; yerde Maria'nın
+       kırmızı atkısı durur, alınca boynunda taşır.
+     • 2–99. bölümlerde altyazı ve konuşma yok; sadece öğretici kartları.
+     • Maria'nın yol arkadaşlığı, kaçırılma / kule sahneleri ve Yüzbaşı Vey
+       çıkarıldı. Bomba bölümü (87) artık Kai ile oynanıyor.
+     • Final (100): Maria ışığın önünde — oyunun tek konuşma sahnesi.
+
+4) Atmosfer
+     • Siyah-beyaz kaldı, "soğuk gümüş" tonlama eklendi: gölgeler çelik
+       mavisi, ışıklar kemik beyazı.
+     • Keskin kenarlı ay ve önünden geçen bulut bantları, ufukta açık
+       sis bandı (siluetler daha keskin okunuyor).
+     • Açık havada şimşek: karanlık bir an çekiliyor, dünya siluet
+       olarak beliriyor. Havada düşen kül.
+     • Tek renk aksanı kızıl: göz, uyarı işareti, atkı.
+     • Vinyet ve gren hafifletildi; alttaki ön plan şeridi alçaltıldı.
+     • Dünyanın adı "Araf" yerine "Yarık" oldu.
+
+5) Yaratıklar ve NPC'ler
+     • Orman yaratığı baştan tasarlandı: KÖK CANAVARI — kambur, uzun
+       kollarıyla yürüyen, dal boynuzlu, tek kızıl yarık gözlü.
+     • Ses yayılımı: koşu, sert iniş, devrilen teneke/taş, silah sesi.
+       Duyan asker sesin geldiği yere gidip feneriyle etrafı tarıyor;
+       yaratıklar o yöne dönüyor, güçlü seste saldırıyor.
+     • Askerler devriyede durup etrafa bakıyor, nöbetçi arama sonrası
+       yerine dönüyor, ikili timde biri siperde tutarken diğeri kuşatıyor.
+     • Konuşma balonları yerine sözsüz ? ! … işaretleri.
+
+6) Müzik
+     • Perde skoru: oyun ilerledikçe koyulaşıyor. Orman seyrek → saat
+       tikleri → alçak davul nabzı → fabrikada mekanik ritim → şehir ve
+       kalede savaş davulları, uzak siren → kule ve geçitte koro.
+     • Her perdede inen dört notalık motif; 7. perdeden sonra yarım ton
+       yanındaki ikinci sesle çatışıyor. Boss bölümlerinde ritim yoğunlaşıyor.
+     • Giriş müziği yeniden yazıldı.
+
+7) Diğer
+     • Menüye dönüşte / bölüm değişiminde sahne kapanırken çıkan hata düzeltildi.
+     • Ekran dışındaki ışıklar çizilmiyor (performans).
+
+
+YAPILACAKLAR
+----------------------------------------------------------------
+  [ ] Gerçek telefonda oynanış testi (iPhone + orta seviye Android):
+      FPS, dokunma hissi, jest eşikleri.
+  [ ] Kenar sistemi ince ayarı: tutunma penceresi, kenarda durma
+      mesafesi (şu an 10–13 px), refleks yakalama hissi.
+  [ ] Giriş ve uyanma sahnesinin zamanlamasını gerçek hızda izleyip ayarla.
+  [ ] Görev dengesi: yangın hızı, dev hızı, bomba süresi, araba rampa
+      hızı, su yükselme hızı.
+  [ ] Her boss bölümüne kendine özgü bir mekanik.
+  [ ] Ayarlara "kontrol hassasiyeti" ve "titreşim".
+  [ ] Bölüm sonu özet ekranı (süre, ölüm sayısı, bulunan eşya).
+  [ ] Yeni görev türleri: asansör kaçışı, tren, karanlıkta sesle ilerleme.
+  [ ] Kontrol noktası işaretleri (şu an görünmez).
+  [ ] Perde başına ayrı ortam sesleri (maden damlası, fabrika makinesi).
+  [ ] Kökteki kullanılmayan eski yardımcı dosyaları temizle
+      (patch*.py, fix_*.py, temp.js, motor_engine.js, index_backup_*.html).

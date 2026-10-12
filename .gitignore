@@ -9,3 +9,6 @@ _*.png
 index_backup_*.html
 *.bak
 .DS_Store
+
+# editör / araç ayarları
+.claude/

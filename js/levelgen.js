@@ -10,12 +10,13 @@
 
 const KILL_Y = 920;
 const WORLD_H = 760;
-const LEVEL_COUNT = 150;
+const LEVEL_COUNT = 100;
+const BOMB_LEVEL = 87;           // bomba tuzaklı kapı — süreli görev
 
 /* ---------------- PERDE TANIMLARI ---------------- */
 const ACTS = [null,
   { // 1 ORMAN
-    biome: 'forest', material: 'earth', rain: 0, wind: 0.4, dark: 0,
+    biome: 'forest', setPieces: ['collapse', 'chase'], material: 'earth', rain: 0, wind: 0.4, dark: 0,
     palette: { sky0: 0x34373f, sky1: 0x101116, far: 0x272930, mid: 0x191a20, near: 0x0c0c11 },
     parallax: [
       { type: 'hills', color: 0x272930, sf: 0.1, yOff: -10, hs: 1, alpha: 0.8 },
@@ -26,7 +27,7 @@ const ACTS = [null,
     creatures: ['stalker'], decor: ['deadTree', 'bush', 'rock', 'wagon'],
   },
   { // 2 KÜL YOLU
-    biome: 'road', material: 'concrete', rain: 0.6, wind: 0.6, dark: 0,
+    biome: 'road', setPieces: ['ambush', 'chase'], material: 'concrete', rain: 0.6, wind: 0.6, dark: 0,
     darkLevels: { 13: 0.55, 16: 0.6, 19: 0.65 },
     palette: { sky0: 0x26282e, sky1: 0x0a0b0f, far: 0x1c1d23, mid: 0x14151a, near: 0x0a0a0e },
     parallax: [
@@ -34,11 +35,11 @@ const ACTS = [null,
       { type: 'ruins', color: 0x17181d, sf: 0.26, yOff: 10, hs: 0.8, alpha: 0.95 },
       { type: 'factory', color: 0x101116, sf: 0.5, yOff: 24, hs: 0.9, alpha: 1 },
     ],
-    chunks: ['flat', 'soldierPost', 'gap', 'crates', 'soldierPost', 'spikes', 'flat'],
+    chunks: ['flat', 'soldierPost', 'gap', 'crates', 'shop', 'spikes', 'flat'],
     creatures: ['hound'], decor: ['lamp', 'barrier', 'sign', 'rubble'],
   },
   { // 3 BATAKLIK
-    biome: 'swamp', material: 'earth', rain: 1, wind: 0.5, dark: 0.25,
+    biome: 'swamp', setPieces: ['chase', 'collapse'], material: 'earth', rain: 1, wind: 0.5, dark: 0.25,
     palette: { sky0: 0x252a28, sky1: 0x0a0d0c, far: 0x1d2220, mid: 0x141816, near: 0x0a0c0b },
     parallax: [
       { type: 'hills', color: 0x1d2220, sf: 0.1, yOff: -4, hs: 0.7, alpha: 0.85 },
@@ -48,35 +49,25 @@ const ACTS = [null,
     chunks: ['flat', 'pond', 'creature', 'gap', 'pond', 'crates', 'spikes'],
     creatures: ['hound', 'stalker'], decor: ['deadTree', 'reed', 'boat', 'rock'],
   },
-  { // 4 BOĞULMUŞ KÖY
-    biome: 'village', material: 'wood', rain: 0.4, wind: 0.7, dark: 0.3,
-    palette: { sky0: 0x2a2c30, sky1: 0x0b0c0e, far: 0x1e2024, mid: 0x15161a, near: 0x0a0b0d },
-    parallax: [
-      { type: 'hills', color: 0x1e2024, sf: 0.1, yOff: -6, hs: 0.7, alpha: 0.8 },
-      { type: 'ruins', color: 0x16181c, sf: 0.3, yOff: 14, hs: 0.7, alpha: 0.95 },
-    ],
-    chunks: ['flat', 'house', 'leverLadder', 'crates', 'creature', 'genDoor', 'pond'],
-    creatures: ['lurker', 'hound'], decor: ['fence', 'wagon', 'grave', 'lamp', 'bush'],
-  },
-  { // 5 MADEN
-    biome: 'mine', material: 'concrete', rain: 0, wind: 0.2, dark: 0.95, interiorish: true,
+  { // 4 MADEN
+    biome: 'mine', setPieces: ['collapse', 'chase'], material: 'concrete', rain: 0, wind: 0.2, dark: 0.95, interiorish: true,
     palette: { sky0: 0x17181d, sky1: 0x060608, far: 0x101115, mid: 0x0c0d10, near: 0x07080a },
     parallax: [{ type: 'hills', color: 0x101115, sf: 0.06, yOff: 0, hs: 0.5, alpha: 0.7 }],
     chunks: ['flat', 'creature', 'leverLadder', 'crates', 'genDoor', 'spikes', 'climb'],
     creatures: ['stalker', 'lurker'], decor: ['pipe', 'rock', 'rubble', 'cage'],
   },
-  { // 6 FABRİKA
-    biome: 'factory', material: 'metal', rain: 0, wind: 0.3, dark: 0.5, blackouts: true,
+  { // 5 FABRİKA
+    biome: 'factory', setPieces: ['ambush', 'collapse'], material: 'metal', rain: 0, wind: 0.3, dark: 0.5, blackouts: true,
     palette: { sky0: 0x202126, sky1: 0x08090b, far: 0x17181c, mid: 0x101114, near: 0x0a0a0d },
     parallax: [
       { type: 'factory', color: 0x17181c, sf: 0.14, yOff: 0, hs: 1, alpha: 0.9 },
       { type: 'factory', color: 0x0e0f12, sf: 0.4, yOff: 18, hs: 1.1, alpha: 1 },
     ],
-    chunks: ['flat', 'sentryGate', 'genDoor', 'crates', 'leverLadder', 'soldierPost', 'spikes'],
+    chunks: ['flat', 'sentryGate', 'factoryLock', 'crates', 'leverLadder', 'soldierPost', 'spikes'],
     creatures: ['lurker'], decor: ['pipe', 'gear', 'barrier', 'rubble'],
   },
-  { // 7 NEHİR
-    biome: 'river', material: 'earth', rain: 1, wind: 0.7, dark: 0.2,
+  { // 6 NEHİR
+    biome: 'river', setPieces: ['chase', 'ambush'], material: 'earth', rain: 1, wind: 0.7, dark: 0.2,
     palette: { sky0: 0x252830, sky1: 0x0a0b10, far: 0x1b1e25, mid: 0x13151a, near: 0x0a0b0e },
     parallax: [
       { type: 'hills', color: 0x1b1e25, sf: 0.1, yOff: -8, hs: 0.9, alpha: 0.85 },
@@ -85,55 +76,28 @@ const ACTS = [null,
     chunks: ['flat', 'pond', 'soldierPost', 'pond', 'creature', 'gap', 'crates'],
     creatures: ['hound'], decor: ['reed', 'boat', 'deadTree', 'rock'],
   },
-  { // 8 ÖLÜ ŞEHİR
-    biome: 'city', material: 'concrete', rain: 0.3, wind: 0.8, dark: 0.35, blackouts: true,
+  { // 7 ÖLÜ ŞEHİR
+    biome: 'city', setPieces: ['ambush', 'chase'], material: 'concrete', rain: 0.3, wind: 0.8, dark: 0.35, blackouts: true,
     palette: { sky0: 0x27272c, sky1: 0x0a0a0d, far: 0x1d1d22, mid: 0x141418, near: 0x0a0a0d },
     parallax: [
       { type: 'ruins', color: 0x1d1d22, sf: 0.12, yOff: -4, hs: 1.1, alpha: 0.9 },
       { type: 'ruins', color: 0x121216, sf: 0.36, yOff: 14, hs: 0.9, alpha: 1 },
     ],
-    chunks: ['flat', 'house', 'sentryGate', 'creature', 'crates', 'gap', 'leverLadder'],
+    chunks: ['flat', 'house', 'sentryGate', 'creature', 'shop', 'gap', 'leverLadder'],
     creatures: ['lurker', 'hound'], decor: ['lamp', 'rubble', 'barrier', 'sign', 'statue'],
   },
-  { // 9 UÇURUMLAR
-    biome: 'cliffs', material: 'earth', rain: 0.5, wind: 1.0, dark: 0.25,
-    palette: { sky0: 0x2c2e36, sky1: 0x0b0c11, far: 0x21232b, mid: 0x16181e, near: 0x0b0c10 },
-    parallax: [
-      { type: 'hills', color: 0x21232b, sf: 0.08, yOff: -30, hs: 1.5, alpha: 0.9 },
-      { type: 'hills', color: 0x14161b, sf: 0.3, yOff: 0, hs: 1.2, alpha: 1 },
-    ],
-    chunks: ['flat', 'windCanyon', 'gap', 'creature', 'windCanyon', 'crates', 'spikes'],
-    creatures: ['hound'], decor: ['rock', 'deadTree', 'grave'],
-  },
-  { // 10 KALE
-    biome: 'fortress', material: 'concrete', rain: 0.2, wind: 0.4, dark: 0.45, blackouts: true,
+  { // 8 KALE
+    biome: 'fortress', setPieces: ['ambush', 'collapse'], material: 'concrete', rain: 0.2, wind: 0.4, dark: 0.45, blackouts: true,
     palette: { sky0: 0x1f2026, sky1: 0x08080b, far: 0x16171c, mid: 0x0f1014, near: 0x08090c },
     parallax: [
       { type: 'ruins', color: 0x16171c, sf: 0.1, yOff: -10, hs: 1.3, alpha: 0.9 },
       { type: 'ruins', color: 0x0e0f13, sf: 0.32, yOff: 10, hs: 1.0, alpha: 1 },
     ],
-    chunks: ['flat', 'sentryGate', 'genDoor', 'soldierPost', 'leverLadder', 'crates', 'sentryGate'],
+    chunks: ['flat', 'sentryGate', 'factoryLock', 'soldierPost', 'house', 'crates', 'sentryGate'],
     creatures: ['lurker'], decor: ['barrier', 'lamp', 'statue', 'cage'],
   },
-  { // 11 KÜL ÇÖLÜ
-    biome: 'desert', material: 'earth', rain: 0, wind: 0.85, dark: 0.2,
-    palette: { sky0: 0x33302c, sky1: 0x0d0c0a, far: 0x262420, mid: 0x191815, near: 0x0c0b0a },
-    parallax: [
-      { type: 'hills', color: 0x262420, sf: 0.07, yOff: -12, hs: 0.8, alpha: 0.85 },
-      { type: 'hills', color: 0x171613, sf: 0.26, yOff: 8, hs: 0.6, alpha: 1 },
-    ],
-    chunks: ['flat', 'gap', 'creature', 'windCanyon', 'crates', 'gap', 'creature'],
-    creatures: ['hound', 'stalker'], decor: ['sign', 'rock', 'rubble', 'grave'],
-  },
-  { // 12 KEMİK MAHZENLERİ
-    biome: 'catacomb', material: 'concrete', rain: 0, wind: 0.15, dark: 0.96,
-    palette: { sky0: 0x141318, sky1: 0x050507, far: 0x0e0d12, mid: 0x0a090d, near: 0x060609 },
-    parallax: [{ type: 'hills', color: 0x0e0d12, sf: 0.05, yOff: 0, hs: 0.4, alpha: 0.6 }],
-    chunks: ['flat', 'creature', 'spikes', 'crates', 'leverLadder', 'creature', 'genDoor'],
-    creatures: ['stalker', 'stalker', 'lurker'], decor: ['grave', 'cage', 'rock', 'statue'],
-  },
-  { // 13 SİS KULESİ
-    biome: 'spire', material: 'wood', rain: 0, wind: 0.5, dark: 0.55, blackouts: true,
+  { // 9 SİS KULESİ
+    biome: 'spire', setPieces: ['collapse', 'ambush'], material: 'wood', rain: 0, wind: 0.5, dark: 0.55, blackouts: true,
     palette: { sky0: 0x23242c, sky1: 0x090a0e, far: 0x191a21, mid: 0x111218, near: 0x0a0a0e },
     parallax: [
       { type: 'ruins', color: 0x191a21, sf: 0.1, yOff: -20, hs: 1.6, alpha: 0.9 },
@@ -142,18 +106,8 @@ const ACTS = [null,
     chunks: ['flat', 'climb', 'leverLadder', 'creature', 'crates', 'climb', 'spikes'],
     creatures: ['lurker'], decor: ['lampInt2', 'statue', 'rubble', 'cage'],
   },
-  { // 14 GEÇİDİN GÖLGESİ
-    biome: 'gateShadow', material: 'earth', rain: 0.4, wind: 0.7, dark: 0.6, blackouts: true,
-    palette: { sky0: 0x2a2330, sky1: 0x0a080d, far: 0x1f1a24, mid: 0x141017, near: 0x0a080c },
-    parallax: [
-      { type: 'hills', color: 0x1f1a24, sf: 0.08, yOff: -16, hs: 1.3, alpha: 0.9 },
-      { type: 'ruins', color: 0x120f16, sf: 0.3, yOff: 8, hs: 1.0, alpha: 1 },
-    ],
-    chunks: ['flat', 'soldierPost', 'creature', 'genDoor', 'windCanyon', 'soldierPost', 'creature'],
-    creatures: ['stalker', 'hound', 'lurker'], decor: ['statue', 'grave', 'rock', 'cage'],
-  },
-  { // 15 GEÇİT
-    biome: 'gate', material: 'concrete', rain: 0, wind: 0.6, dark: 0.5,
+  { // 10 GEÇİT
+    biome: 'gate', setPieces: ['ambush', 'chase', 'collapse'], material: 'concrete', rain: 0, wind: 0.6, dark: 0.5,
     palette: { sky0: 0x342c38, sky1: 0x0c0a10, far: 0x251f29, mid: 0x171219, near: 0x0b090d },
     parallax: [
       { type: 'hills', color: 0x251f29, sf: 0.07, yOff: -24, hs: 1.5, alpha: 0.9 },
@@ -166,7 +120,7 @@ const ACTS = [null,
 
 /* ---------------- GİRİŞ SİNEMATİĞİ ---------------- */
 const INTRO_LEVEL = {
-  id: 0, act: 0, name: 'KAYBOLUŞ', sub: 'BİR AKŞAM YÜRÜYÜŞÜ', type: 'intro',
+  id: 0, act: 0, name: 'KAYBOLUŞ', sub: 'BİR AKŞAM YÜRÜYÜŞÜ', type: 'intro', biome: 'forest',
   worldW: 1800, rain: 0, wind: 0.5, dark: 0,
   palette: { sky0: 0x3a3d44, sky1: 0x0d0e12, far: 0x2b2d34, mid: 0x1b1c22, near: 0x0c0c10 },
   parallax: [
@@ -174,7 +128,9 @@ const INTRO_LEVEL = {
     { type: 'trees', color: 0x22242b, sf: 0.26, yOff: 8, hs: 0.95, alpha: 0.92 },
     { type: 'trees', color: 0x14151a, sf: 0.5, yOff: 22, hs: 1.1, alpha: 1 },
   ],
-  ground: [{ x0: -200, x1: 2000, y: 600, material: 'earth' }],
+  /* ortadaki parça (520–615) giriş sinematiğinde depremle çöken toprak kütlesi;
+     ayrı çizilir, buradaki şeritler yarığın iki yakası */
+  ground: [{ x0: -200, x1: 520, y: 600, material: 'earth' }, { x0: 615, x1: 2000, y: 600, material: 'earth' }],
 };
 
 /* ============================================================
@@ -191,16 +147,16 @@ function getLevel(n) {
 }
 
 function genLevel(n) {
-  const act = Math.min(15, Math.ceil(n / 10));
+  const act = Math.min(10, Math.ceil(n / 10));
   const A = ACTS[act];
   const rng = Atmo._mulberry(n * 7919 + 101);
   const d = n / LEVEL_COUNT;                 // 0..1 zorluk
   const inAct = ((n - 1) % 10) / 9;          // perde içi ilerleme
   const isBoss = n % 10 === 0;
-  const gunEra = n >= 18;
+  const gunEra = n >= 17;
 
   const L = {
-    id: n, act, type: 'level',
+    id: n, act, type: 'level', biome: A.biome,
     name: ACT_NAMES[act][0], sub: ACT_NAMES[act][1],
     bossName: isBoss ? BOSS_NAMES[n] : null,
     rain: A.rain, wind: A.wind,
@@ -216,15 +172,17 @@ function genLevel(n) {
     doors: [], levers: [], ladders: [], generators: [], poweredDoors: [],
     cars: [], driveCar: null,
     soldiers: [], creatures: [],
+    collapses: [], chases: [], ambushes: [],
     decor: [], shafts: [], triggers: [],
     leverLinks: {}, genLinks: {},
     bossGate: null, endCine: null,
   };
 
-  /* özel bölüm bayrakları */
-  if (n === 10) L.endCine = 'kidnap';
-  if (n === 100) L.endCine = 'glimpse';
-  if (n === 150) L.endCine = 'final';
+  /* özel bölüm bayrakları — Maria yarığa düştükten sonra son bölüme kadar
+     görünmez; tek sinematik final */
+  L.companion = false;
+  if (n === 100) L.endCine = 'final';
+  L.noGrab = [];             // tutunulamayan kenarlar (kol→merdiven bulmacası atlanmasın)
 
   /* ---- ganimet kuyruğu (kutu içerikleri) ---- */
   const loot = [];
@@ -390,6 +348,7 @@ function genLevel(n) {
       endSeg(x + 320);
       const topY = gy - cliffH;
       L.walls.push({ x: x + 320, y0: topY, y1: gy + 2 });
+      L.noGrab.push({ x: x + 320, y: topY });
       L.ladders.push({ x: x + 300, topY: topY, bottomY: gy - 4, raised: true, id });
       L.leverLinks['lev_' + id] = { ladder: id };
       jumpTo(x + 320, topY);
@@ -445,6 +404,45 @@ function genLevel(n) {
       x += w + 100;
     },
 
+    /* ÇÖKEN KÖPRÜ — üstüne basınca arkandan parça parça çöker: koş! */
+    collapse() {
+      const n = 7 + Math.floor(rng() * 3);
+      const pw = 64;
+      endSeg(x);
+      L.collapses.push({ x0: x, y: gy, n, pw });
+      x += n * pw;
+      jumpTo(x);
+      x += 60;
+    },
+
+    /* KOVALAMACA — arkandan bir şey fırlar; uçurumun öbür yanına atla, o atlayamaz */
+    chase() {
+      const run = 900 + rng() * 300;
+      const type = A.creatures.includes('hound') ? 'hound' : A.creatures[Math.floor(rng() * A.creatures.length)];
+      const gapW = 118 + d * 22;
+      L.chases.push({
+        trigX: x + 140, spawnX: x - 380, endX: x + run, type,
+        count: type === 'hound' && d > 0.3 ? 2 : 1,
+      });
+      // koşu yolu boyunca küçük engeller: atlanacak kütük/kaya
+      for (let i = 1; i <= 3; i++) L.decor.push({ type: 'rock', x: x + i * run / 4, groundY: gy });
+      x += run;
+      endSeg(x);
+      x += gapW;
+      jumpTo(x);
+      x += 80;
+    },
+
+    /* PUSU — geçerken telsiz çatırdar, sağdan bir tim koşarak gelir; siper al */
+    ambush() {
+      const w = 760 + rng() * 200;
+      L.cars.push({ x: x + 180, groundY: gy, kind: rng() < 0.5 ? 'truck' : 'sedan', burnt: true });
+      L.cars.push({ x: x + w - 220, groundY: gy, kind: 'sedan', burnt: rng() < 0.6 });
+      L.ambushes.push({ trigX: x + 260, fromX: x + w + 420, n: d > 0.5 ? 3 : 2, minX: x + 120, maxX: x + w + 200 });
+      if (loot.length) L.looseItems.push({ kind: loot.shift(), x: x + 200, y: gy - 30 });
+      x += w;
+    },
+
     carDrive() {
       // bariyer tarlası — tek geçiş: arabayı çalıştırmak.
       // anahtar devriyedeki askerin bileğinde — sessizce çal ya da öldür.
@@ -468,7 +466,17 @@ function genLevel(n) {
   /* ============ BÖLÜM KURGUSU ============ */
   C.flat(360);   // güvenli başlangıç
 
-  if (isBoss) {
+  const H = {
+    L, C, rng, d, A, n, takeLoot,
+    getX: () => x, setX: (v) => { x = v; }, endSeg, jumpTo, getGy: () => gy,
+  };
+  addBuildingChunks(C, H);
+  const mission = MISSIONS[n];
+  if (mission) {
+    buildMissionLevel(mission, H);
+    if (L._x) x = L._x;
+    if (L.vehicle) L.companion = false;
+  } else if (isBoss) {
     buildBossArena(L, n, act, A, rng, d, C, () => x, (nx) => { x = nx; });
     // arena sonrası x güncellenmiş döner
     x = L._x;
@@ -476,12 +484,20 @@ function genLevel(n) {
     // perde şablonundan parça dizilimi — bölüm uzunluğuna göre
     const targetW = 2700 + n * 16 + rng() * 500;
     const seq = [...A.chunks].sort(() => rng() - 0.5);
+    /* AKSİYON SAHNESİ: bölüm 3'ten itibaren her bölümde en az bir set-piece
+       (çöken köprü / kovalamaca / pusu) — perdenin karakterine göre */
+    const pieces = (A.setPieces ?? []).filter(p => !(p === 'ambush' && n < 11));
+    if (n >= 2 && pieces.length) {
+      const pick = pieces[Math.floor(rng() * pieces.length)];
+      seq.splice(1, 0, pick);                       // erken gelsin — bölümün başı sıkıcı olmasın
+      if (d > 0.45 && pieces.length > 1 && rng() < 0.5) seq.splice(seq.length - 1, 0, pieces[(pieces.indexOf(pick) + 1) % pieces.length]);
+    }
     let si = 0;
     while (x < targetW) {
       let chunk = seq[si % seq.length];
       si++;
       // özel bölüm zorlamaları
-      if (n === 65 && !L.driveCar && x > 900) chunk = 'carDrive';
+      
       if (chunk === 'creature' && n < 3) chunk = 'flat';            // ilk 2 bölüm tanışma; bölüm 3'ten itibaren yaratık (hikâyeyle uyumlu)
       if ((chunk === 'soldierPost' || chunk === 'sentryGate') && n < 11) chunk = 'flat';   // perde 1'de asker yok
       C[chunk]?.();
@@ -490,8 +506,11 @@ function genLevel(n) {
     }
   }
 
-  /* bölüm 18: ölü askerin yanında tabanca — hikâye anı */
-  if (n === 18) {
+  /* bölüm 1: uyandığın yerde Maria'nın atkısı — sözsüz anlatım */
+  if (n === 1) L.scarfAt = { x: 230, groundY: 600 };
+
+  /* bölüm 17: ölü askerin yanında tabanca */
+  if (n === 17) {
     L.decor.push({ type: 'deadSoldier', x: 480, groundY: 600 });
     L.looseItems.push({ kind: 'pistol', x: 510, y: 560 });
     L.looseItems.push({ kind: 'mag', x: 545, y: 560 });
@@ -502,6 +521,7 @@ function genLevel(n) {
   endSeg(worldW + 100);
   L.worldW = worldW;
   L.exitX = L.endCine ? worldW - 640 : worldW - 90;   // sinematik sahnesi çerçevede kalsın
+  if (L.bomb) L.exitX = worldW + 9999;                  // bomba bölümü: bitiş = bombayı sökmek
 
   /* ---- GARANTİ PİL: feneri kullanılan karanlık bölümlerde pil MUTLAKA bulunabilsin.
      Eski sistem pili %16 ihtimalle düz zemine bırakıyordu → oyuncu çoğu zaman hiç
@@ -517,7 +537,7 @@ function genLevel(n) {
     }
   }
 
-  /* ---- kidnap bölümünde son 600px temiz ---- */
+  /* ---- sinematikli bölümde son 600px temiz ---- */
   if (L.endCine) {
     L.soldiers = L.soldiers.filter(s => s.x < worldW - 700);
     L.creatures = L.creatures.filter(c => c.patrolMaxX < worldW - 700);
@@ -544,28 +564,15 @@ function genLevel(n) {
     }
   }
 
-  /* ---- hikâye tetikleri ---- */
-  const beats = BEATS[n];
-  if (beats?.mid?.length) {
-    beats.mid.forEach((line, i) => {
-      L.triggers.push({ x: worldW * (0.3 + i * 0.32), text: line });
-    });
-  }
-  // kontrol ipuçları (erken bölümler)
-  if (n === 1) {
-    L.triggers.push({ x: 300, text: '[A/D] yürü — [W] zıpla — [S] eğil — [E] etkileşim' });
-    L.triggers.push({ x: 700, text: 'Eşyaları almak için yanında eğilirsin. Acele etme.' });
-  }
-  if (n === 13) L.triggers.push({ x: 350, text: '[F] el feneri. Pil biterse [E] ile yenisini takarsın — yavaş bir iştir.' });
-  if (n === 18) L.triggers.push({ x: 560, text: '[X] ateş — [R] şarjör değiştir. Boş şarjör yere düşer.' });
+  /* ---- öğretici ipuçları (hikâye satırı yok — yalnız kontrol anlatımı) ---- */
+  if (n === 2) L.triggers.push({ x: 300, text: UI_HINT('edge'), icon: '⚠' });
+  if (n === 3) L.triggers.push({ x: 300, text: UI_HINT('ledge'), icon: '✋' });
+  if (n === 13) L.triggers.push({ x: 350, text: UI_HINT('flash'), icon: '✦' });
+  if (n === 17) L.triggers.push({ x: 560, text: UI_HINT('fire'), icon: '◎' });
   // gizlilik öğretimi: ilk nöbetçili bölümde bir kez
-  if ((n === 11 || n === 51) && L._hasSentry) {
-    L.triggers.push({ x: 300, text: 'Görülürsen vururlar. Eğil ([S]), siperin arkasında kal, ışıkta durma.' });
-  }
+  if ((n === 11 || n === 41) && L._hasSentry) L.triggers.push({ x: 300, text: UI_HINT('stealth'), icon: '◐' });
   // karanlık öğretimi: zifiri perdelerde fener şart, ama ışık seni ele verir
-  if (L.dark >= 0.85) {
-    L.triggers.push({ x: 320, text: 'Zifiri karanlık. Fenersiz göremezsin — ama fener açıkken düşmanlar seni görür.' });
-  }
+  if (L.dark >= 0.85 && n % 10 === 1) L.triggers.push({ x: 320, text: UI_HINT('dark'), icon: '✦' });
 
   /* checkpoint temizliği */
   L.checkpoints = [...new Set(L.checkpoints)].sort((a, b) => a - b);
@@ -573,11 +580,47 @@ function genLevel(n) {
   return L;
 }
 
+/* ============ BOMBA BÖLÜMÜ (87) ============
+   Kale kulesinin tek çıkışı bomba tuzaklı bir kapı. Süre işliyor.
+   Yol: nöbetçi kapısı → ölü asker (TALİMAT) → yükseltide PENSE →
+   devriye noktası → bomba odası. Süre dolarsa her şey biter. */
+function buildBombLevel(L, C, rng, getX, setX, getGy) {
+  L.bombTime = 225;              // saniye
+  L.blackouts = false;
+  L.companion = false;
+  C.flat(420);
+  C.sentryGate();
+  let x = getX();
+  // ölü asker + talimat kâğıdı
+  L.decor.push({ type: 'deadSoldier', x: x + 120, groundY: 600 });
+  L.looseItems.push({ kind: 'manual', x: x + 160, y: 560 });
+  C.flat(380);
+  // yükselti — pense üstte
+  const x0 = getX();
+  C.climb();
+  const plateau = L.ground.find(g => Math.abs(g.x0 - (x0 + 260)) < 2);
+  const py = plateau ? plateau.y : 480;
+  L.looseItems.push({ kind: 'cutters', x: x0 + 260 + 170, y: py - 40 });
+  L.decor.push({ type: 'crateOpen', x: x0 + 260 + 140, groundY: py });
+  C.flat(260);
+  C.soldierPost();
+  C.flat(240);
+  x = getX();
+  // bomba odası
+  L.decor.push({ type: 'shell', x0: x + 20, x1: x + 760, groundY: 600, roofY: 360 });
+  L.decor.push({ type: 'lampInt2', x: x + 420, y: 420, flicker: true });
+  L.bomb = { x: x + 470, groundY: 600 };
+  L.triggers.push({ x: x + 240, text: 'Bombayı sökmek için PENSE ve TALİMAT gerekli. Kırmızı kabloya dokunma.', icon: '⏱' });
+  C.flat(900);
+  L._x = getX();
+  L.checkpoints.push(L.bomb.x - 300);
+}
+
 /* ============ BOSS ARENALARI ============ */
 function buildBossArena(L, n, act, A, rng, d, C, getX, setX) {
   let x = getX();
   const gy = 600;
-  const firefight = [20, 60, 80, 100, 140].includes(n);
+  const firefight = [20, 50, 70, 80].includes(n);
   const arenaW = 1500 + d * 700;
   const start = x;
 
@@ -602,8 +645,8 @@ function buildBossArena(L, n, act, A, rng, d, C, getX, setX) {
     });
   } else {
     // yaratık boss'u
-    const bossType = { 10: 'stalker', 30: 'hound', 40: 'lurker', 50: 'stalker', 70: 'hound', 90: 'lurker', 110: 'hound', 120: 'stalker', 130: 'lurker', 150: 'stalker' }[n] ?? 'stalker';
-    const scale = { 10: 1.7, 30: 1.3, 40: 1.9, 50: 2.0, 70: 1.5, 90: 2.2, 110: 1.7, 120: 2.6, 130: 2.5, 150: 3.1 }[n] ?? (1.6 + d);
+    const bossType = { 10: 'stalker', 30: 'hound', 40: 'stalker', 60: 'hound', 90: 'lurker', 100: 'stalker' }[n] ?? 'stalker';
+    const scale = { 10: 1.6, 30: 1.4, 40: 2.1, 60: 1.6, 90: 2.4, 100: 3.0 }[n] ?? (1.6 + d);
     L.creatures.push({
       type: bossType, x: start + arenaW * 0.6,
       patrolMinX: start + 100, patrolMaxX: start + arenaW - 100,
@@ -611,9 +654,9 @@ function buildBossArena(L, n, act, A, rng, d, C, getX, setX) {
       name: BOSS_NAMES[n], charges: true,
     });
     // sürü destekli boss'lar
-    if (n >= 70) {
+    if (n >= 60) {
       const minion = bossType === 'hound' ? 'hound' : (rng() < 0.5 ? 'hound' : 'lurker');
-      for (let i = 0; i < (n >= 120 ? 2 : 1); i++) {
+      for (let i = 0; i < (n >= 90 ? 2 : 1); i++) {
         L.creatures.push({
           type: minion, x: start + 300 + i * 500,
           patrolMinX: start + 100, patrolMaxX: start + arenaW - 100,
@@ -854,6 +897,27 @@ const Decor = {
         g.fillStyle(c, 1);
         g.beginPath(); g.moveTo(x - 12, y + 14); g.lineTo(x + 12, y + 14); g.lineTo(x + 7, y); g.lineTo(x - 7, y); g.closePath(); g.fillPath();
         d.lightAt = { x, y: y + 18, flicker: d.flicker };
+        break;
+      }
+      case 'scarf': {
+        // Maria'nın atkısı — yere düşmüş, ucu rüzgârda kıvrık; tek açık tonlu nesne
+        const x = d.x, y = d.groundY;
+        g.fillStyle(0x6a2e2e, 0.95);
+        g.beginPath();
+        g.moveTo(x - 18, y - 1); g.lineTo(x - 4, y - 4); g.lineTo(x + 10, y - 2); g.lineTo(x + 22, y - 6);
+        g.lineTo(x + 26, y - 3); g.lineTo(x + 12, y + 1); g.lineTo(x - 2, y); g.lineTo(x - 16, y + 2);
+        g.closePath(); g.fillPath();
+        g.fillStyle(0x4a1f20, 1);
+        g.fillRect(x + 22, y - 6, 2, 5); g.fillRect(x + 25, y - 5, 2, 4);
+        break;
+      }
+      case 'crateOpen': {
+        // kapağı açık takım çantası
+        const x = d.x, y = d.groundY;
+        g.fillStyle(c, 1);
+        g.fillRect(x - 22, y - 18, 44, 18);
+        g.beginPath(); g.moveTo(x - 22, y - 18); g.lineTo(x - 30, y - 36); g.lineTo(x - 26, y - 38); g.lineTo(x - 18, y - 18); g.closePath(); g.fillPath();
+        g.fillRect(x - 6, y - 23, 12, 5);
         break;
       }
       case 'shell': {

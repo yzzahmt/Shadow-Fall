@@ -89,6 +89,42 @@ const ITEM_DEFS = {
       g.fillRect(2, -1, 4, 4);        // tetik korkuluğu
     },
   },
+  cutters: {
+    label: 'PENSE', sound: 'metal', density: 0.004, friction: 0.6, restitution: 0.2,
+    w: 22, h: 10, pickable: true,
+    draw(g, c) {
+      g.lineStyle(2.6, c, 1);
+      g.beginPath(); g.moveTo(-10, -4); g.lineTo(2, 0); g.lineTo(10, -2); g.strokePath();
+      g.beginPath(); g.moveTo(-10, 4); g.lineTo(2, 0); g.lineTo(10, 2); g.strokePath();
+      g.fillStyle(c, 1); g.fillCircle(2, 0, 2.4);
+    },
+  },
+  fuse: {
+    label: 'SİGORTA', sound: 'metal', density: 0.004, friction: 0.6, restitution: 0.15,
+    w: 10, h: 18, pickable: true,
+    draw(g, c) {
+      g.fillStyle(c, 1); g.fillRoundedRect(-5, -9, 10, 18, 2);
+      g.fillStyle(0x6a6450, 1); g.fillRect(-4, -9, 8, 3); g.fillRect(-4, 6, 8, 3);
+    },
+  },
+  note: {
+    label: 'NOT', sound: 'soft', density: 0.0008, friction: 0.9, restitution: 0.05,
+    w: 14, h: 6, pickable: true,
+    draw(g, c) {
+      g.fillStyle(0x4a4a50, 1); g.fillRect(-7, -3, 14, 6);
+      g.lineStyle(0.8, c, 1); g.beginPath(); g.moveTo(-5, 0); g.lineTo(4, 0); g.strokePath();
+    },
+  },
+  manual: {
+    label: 'KÂĞIT', sound: 'soft', density: 0.0008, friction: 0.9, restitution: 0.05,
+    w: 16, h: 6, pickable: true,
+    draw(g, c) {
+      g.fillStyle(0x3a3a40, 1);
+      g.fillRect(-8, -3, 16, 6);
+      g.lineStyle(0.8, c, 1);
+      g.beginPath(); g.moveTo(-6, -1); g.lineTo(5, -1); g.moveTo(-6, 1.4); g.lineTo(3, 1.4); g.strokePath();
+    },
+  },
   mag: {
     label: 'ŞARJÖR', sound: 'metal', density: 0.004, friction: 0.6, restitution: 0.2,
     w: 10, h: 16, pickable: true,
@@ -171,6 +207,7 @@ class PhysItem {
       Phaser.Physics.Matter.Matter.Body.setVelocity(this.body, { x: opts.vx ?? 0, y: opts.vy ?? 0 });
       Phaser.Physics.Matter.Matter.Body.setAngularVelocity(this.body, (Math.random() - 0.5) * 0.3);
     }
+    this.meta = opts.meta ?? null;
     this.picked = false;
     this.inWater = false;
     this.glowT = Math.random() * 10;
@@ -304,8 +341,9 @@ class Crate {
     this.scene.physItems.push(lid);
     this.contents.forEach((kind, i) => {
       this.scene.time.delayedCall(60 + i * 70, () => {
-        const it = new PhysItem(this.scene, kind, this.x + (Math.random() - 0.5) * 14, this.y - this.h / 2 - 6, {
-          vx: (Math.random() - 0.5) * 5, vy: -4 - Math.random() * 3, depth: 97,
+        const [k, ...meta] = kind.split(':');          // 'note:shop1:2' → not + kilit bilgisi
+        const it = new PhysItem(this.scene, k, this.x + (Math.random() - 0.5) * 14, this.y - this.h / 2 - 6, {
+          vx: (Math.random() - 0.5) * 5, vy: -4 - Math.random() * 3, depth: 97, meta: meta.join(':'),
         });
         this.scene.physItems.push(it);
       });

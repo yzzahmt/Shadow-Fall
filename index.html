@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#050507">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="SHADOW FALL — Atmosferik siluet-platform. Limbo tarzı fizik ve bulmaca.">
+<meta name="description" content="SHADOW FALL — Karanlık, siyah-beyaz siluet platform ve gizlilik oyunu.">
 <link rel="icon" href="data:,">
 <title>SHADOW FALL</title>
 
@@ -32,6 +32,9 @@ button { font-family:inherit; -webkit-user-select:none; user-select:none; }
 .bar { position:fixed; left:0; right:0; height:0; background:#000; z-index:15; transition:height 1.2s cubic-bezier(.7,0,.3,1); pointer-events:none; }
 #bar-top { top:0; } #bar-bot { bottom:0; }
 body.cine #bar-top, body.cine #bar-bot { height:9vh; }
+body.cine #touch-layer { display:none !important; }
+body.cine #tut-card { opacity:0 !important; }
+body.cine #controls * { pointer-events:none !important; }
 
 /* ---------- subtitles ---------- */
 #subtitle {
@@ -43,37 +46,99 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
 }
 #subtitle.show { opacity:1; }
 
-/* ---------- touch controls ---------- */
-#controls {
-  position:fixed; left:0; right:0; bottom:0;
-  display:none; justify-content:space-between; align-items:flex-end;
-  padding:0 14px;
-  padding-bottom:calc(12px + env(safe-area-inset-bottom));
-  padding-left:calc(14px + env(safe-area-inset-left));
-  padding-right:calc(14px + env(safe-area-inset-right));
-  pointer-events:none; z-index:20;
+/* ---------- DOKUNMATİK: jest katmanı (joystick/tuş YOK) ----------
+   kaydır = yürü/koş · yukarı fırlat = zıpla · aşağı = eğil/kay
+   dokun = al/kullan/ateş · basılı tut = it/çek/levye */
+#touch-layer { position:fixed; inset:0; z-index:19; display:none; touch-action:none; }
+#touch-trail {
+  position:fixed; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%;
+  border:1.5px solid rgba(230,226,215,0.35); pointer-events:none; z-index:19; opacity:0;
+  transition:opacity 0.25s, transform 0.12s;
 }
-.cluster { display:flex; gap:10px; pointer-events:auto; align-items:flex-end; }
-.ctl {
-  width:clamp(48px,11vh,66px); height:clamp(48px,11vh,66px);
-  border-radius:50%; background:rgba(255,255,255,0.045);
-  border:1px solid rgba(255,255,255,0.09); color:#B8B4AE;
-  font-size:20px; line-height:1; display:flex; align-items:center; justify-content:center;
-  opacity:0.3; touch-action:none; transition:opacity 0.1s, transform 0.1s; outline:none; position:relative;
+#touch-trail.on { opacity:1; }
+#touch-trail.hold { border-color:rgba(240,210,160,0.8); transform:scale(1.25); }
+#touch-anchor {
+  position:fixed; width:10px; height:10px; margin:-5px 0 0 -5px; border-radius:50%;
+  background:rgba(230,226,215,0.3); pointer-events:none; z-index:19; opacity:0; transition:opacity 0.25s;
 }
-.ctl.active { opacity:0.65; transform:scale(0.94); }
-#btn-act.glow { box-shadow:0 0 22px rgba(220,216,205,0.35); opacity:0.7; border-color:rgba(220,216,205,0.4); }
-#btn-act .act-label {
-  position:absolute; top:-22px; left:50%; transform:translateX(-50%);
-  font-size:10px; letter-spacing:0.2em; color:rgba(220,216,205,0.8); white-space:nowrap; display:none;
+#touch-anchor.on { opacity:1; }
+.tap-ring {
+  position:fixed; width:20px; height:20px; margin:-10px 0 0 -10px; border-radius:50%;
+  border:2px solid rgba(230,226,215,0.7); pointer-events:none; z-index:19;
+  animation:tapRing 0.45s ease-out forwards;
 }
-#btn-act.glow .act-label { display:block; }
+@keyframes tapRing { to { transform:scale(3.2); opacity:0; } }
+.hud-chip.tappable { pointer-events:auto; cursor:pointer; }
+/* öğretici kartı */
+#tut-card {
+  position:fixed; left:50%; top:calc(64px + env(safe-area-inset-top)); transform:translate(-50%, -10px);
+  display:flex; align-items:center; gap:14px; padding:12px 20px 12px 14px; border-radius:14px;
+  background:rgba(12,12,16,0.78); border:1px solid rgba(255,255,255,0.14); z-index:23;
+  color:#E2DED6; font-size:clamp(12px,2.6vw,15px); letter-spacing:0.04em; max-width:min(560px,88vw);
+  opacity:0; pointer-events:none; transition:opacity 0.4s, transform 0.4s;
+  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+}
+#tut-card.show { opacity:1; transform:translate(-50%, 0); }
+/* kısa öğretici / bulmaca ipucu (konuşma değil) */
+#hint-card {
+  position:fixed; left:50%; top:calc(118px + env(safe-area-inset-top)); transform:translate(-50%, -8px);
+  display:flex; align-items:center; gap:10px; padding:8px 16px 8px 10px; border-radius:12px;
+  background:rgba(10,11,14,0.72); border:1px solid rgba(255,255,255,0.12); z-index:23;
+  color:#D8D4CC; font-size:clamp(11px,2.3vw,13px); letter-spacing:0.03em; max-width:min(520px,86vw);
+  opacity:0; pointer-events:none; transition:opacity 0.35s, transform 0.35s;
+}
+#hint-card.show { opacity:1; transform:translate(-50%, 0); }
+#hint-card .ico { font-size:16px; width:28px; height:28px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.08); }
+body.cine #hint-card { opacity:0 !important; }
+#tut-card .ico { font-size:26px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.08); animation:tutPulse 1.4s infinite; }
+#tut-card.done .ico { background:rgba(120,190,130,0.35); animation:none; }
+#tut-card.done .ico::after { content:'✓'; position:absolute; }
+@keyframes tutPulse { 50% { transform:scale(1.12); background:rgba(255,255,255,0.16); } }
+/* şifre paneli */
+#keypad-box { width:min(300px,86vw); padding:18px; border-radius:14px; background:linear-gradient(#17181d,#0d0e12); border:1px solid rgba(255,255,255,0.1); }
+#kp-display { font-family:'Inter',monospace; font-size:34px; letter-spacing:0.3em; text-align:center; color:#d8c9a0; margin-bottom:6px; }
+#kp-display.err { color:#e8604a; animation:kpShake 0.35s; }
+@keyframes kpShake { 25% { transform:translateX(-6px); } 75% { transform:translateX(6px); } }
+#kp-known { text-align:center; font-size:10px; letter-spacing:0.22em; color:#8E8A82; margin-bottom:14px; }
+#kp-keys { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.kp-key { height:52px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#E2DED6; font-size:20px; touch-action:none; }
+.kp-key:active { background:rgba(255,255,255,0.18); }
+.lv-btn.mislv { border-color:rgba(160,190,214,0.45); color:#A8C0D2; }
+/* bomba paneli */
+#bomb-panel { z-index:34; }
+#bomb-box {
+  width:min(560px,92vw); padding:18px 18px 14px; border-radius:14px;
+  background:linear-gradient(#17181d,#0d0e12); border:1px solid rgba(255,255,255,0.1);
+  box-shadow:0 20px 60px rgba(0,0,0,0.7);
+}
+#bomb-timer { font-family:'Inter',monospace; font-weight:500; font-size:clamp(30px,7vw,44px); letter-spacing:0.12em; color:#e8604a; text-align:center; text-shadow:0 0 18px rgba(232,96,74,0.5); }
+#bomb-step { text-align:center; font-size:11px; letter-spacing:0.24em; color:#8E8A82; margin:6px 0 14px; }
+#bomb-screws { display:flex; justify-content:space-between; margin:0 4px 10px; }
+.screw { width:44px; height:44px; border-radius:50%; background:radial-gradient(#4a4c55,#25262c); border:1px solid #55575f; position:relative; touch-action:none; }
+.screw::after { content:''; position:absolute; left:50%; top:20%; width:3px; height:60%; margin-left:-1.5px; background:#15161a; transform:rotate(var(--r,20deg)); }
+.screw .ring { position:absolute; inset:-5px; border-radius:50%; border:3px solid transparent; border-top-color:#d8c9a0; transform:rotate(calc(var(--p,0) * 360deg)); opacity:var(--o,0); }
+.screw.out { opacity:0.15; }
+#bomb-wires { display:flex; flex-direction:column; gap:9px; }
+.wire { height:30px; border-radius:6px; position:relative; cursor:pointer; touch-action:none; display:flex; align-items:center; padding-left:12px; font-size:10px; letter-spacing:0.2em; color:rgba(255,255,255,0.75); text-shadow:0 1px 3px #000; }
+.wire::before { content:''; position:absolute; left:0; right:0; top:50%; height:7px; margin-top:-3.5px; background:var(--c); border-radius:4px; box-shadow:0 0 8px var(--c); opacity:0.85; z-index:-1; }
+.wire.cut::before { background:linear-gradient(90deg,var(--c) 46%,transparent 46%,transparent 54%,var(--c) 54%); box-shadow:none; opacity:0.35; }
+.wire.cut { color:rgba(255,255,255,0.25); }
+#bomb-wires.locked .wire { pointer-events:none; opacity:0.35; }
+#bomb-hint { margin-top:12px; font-family:'Cormorant Garamond',serif; font-style:italic; font-size:16px; color:#C9C5BE; text-align:center; min-height:22px; }
+#bomb-hud {
+  position:fixed; top:calc(12px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+  font-family:'Inter',monospace; font-size:22px; letter-spacing:0.14em; color:#e8604a; display:none; z-index:21;
+  text-shadow:0 0 14px rgba(232,96,74,0.55); pointer-events:none;
+}
+#bomb-hud.urgent { animation:bombPulse 0.5s infinite; }
+@keyframes bombPulse { 50% { opacity:0.45; } }
 
 /* ---------- HUD ---------- */
 #hud {
   position:fixed; top:calc(10px + env(safe-area-inset-top)); left:calc(16px + env(safe-area-inset-left));
   display:none; align-items:center; gap:14px; z-index:21; pointer-events:none;
 }
+#hud #inv-row { pointer-events:auto; }
 #hp-row { display:flex; gap:5px; align-items:center; }
 .hp-cell {
   width:22px; height:8px; border-radius:2px; background:rgba(255,255,255,0.07);
@@ -293,6 +358,10 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
       </svg>
       <span class="num">0 · 0</span>
     </div>
+    <div class="hud-chip" id="code-chip" title="Şifre" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#C9C5BE" stroke-width="1.6"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10 V7 a4 4 0 0 1 8 0 v3"/></svg>
+      <span class="num">_ _ _ _</span>
+    </div>
     <div class="hud-chip" id="battery-box" title="El Feneri">
       <svg id="bat-icon" viewBox="0 0 24 24" fill="none" stroke="#E8E0C8" stroke-width="1.6" stroke-linecap="round">
         <path d="M4 10 h6 l8 -4 v12 l-8 -4 H4 z M20 9 l2 -1 M20 15 l2 1 M21 12 h2"/>
@@ -315,26 +384,44 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
 <button id="pause-btn" aria-label="Duraklat">▮▮</button>
 <button id="skip-btn" aria-label="Sahneyi atla">ATLA<span class="skip-ico">▸▸</span></button>
 
-<!-- touch controls -->
-<div id="controls">
-  <div class="cluster">
-    <button class="ctl" id="btn-left" aria-label="Sol">◂</button>
-    <button class="ctl" id="btn-right" aria-label="Sağ">▸</button>
+<!-- dokunmatik jest katmanı -->
+<div id="touch-layer"></div>
+<div id="touch-anchor"></div>
+<div id="touch-trail"></div>
+<div id="tut-card"><div class="ico">⟷</div><div class="txt"></div></div>
+<div id="hint-card"><div class="ico">•</div><div class="txt"></div></div>
+
+<!-- şifre paneli -->
+<div class="overlay" id="keypad-panel">
+  <div id="keypad-box">
+    <div id="kp-display">_ _ _ _</div>
+    <div id="kp-known"></div>
+    <div id="kp-keys"></div>
   </div>
-  <div class="cluster">
-    <button class="ctl" id="btn-flash" aria-label="Fener" style="font-size:15px">⌁</button>
-    <button class="ctl" id="btn-fire" aria-label="Ateş" style="font-size:15px">✛</button>
-    <button class="ctl" id="btn-crouch" aria-label="Eğil">⌄</button>
-    <button class="ctl" id="btn-act" aria-label="Etkileşim">●<span class="act-label"></span></button>
-    <button class="ctl" id="btn-jump" aria-label="Zıpla">▲</button>
+  <button class="text-btn dim" id="kp-close" style="margin-top:12px">GERİ</button>
+</div>
+
+<!-- hidden: eski tuş referansları için yer tutucu -->
+<div id="controls" style="display:none"><div id="btn-act"><span class="act-label"></span></div><div id="btn-fire"></div><div id="btn-reload"></div><div id="btn-heal"></div></div>
+
+<!-- bomba görevi -->
+<div id="bomb-hud">03:00</div>
+<div class="overlay" id="bomb-panel">
+  <div id="bomb-box">
+    <div id="bomb-timer">03:00</div>
+    <div id="bomb-step">KAPAĞIN VİDALARINI SÖK — BASILI TUT</div>
+    <div id="bomb-screws"></div>
+    <div id="bomb-wires" class="locked"></div>
+    <div id="bomb-hint"></div>
   </div>
+  <button class="text-btn dim" id="bomb-close" style="margin-top:12px">GERİ ÇEKİL</button>
 </div>
 
 <!-- main menu -->
 <div class="overlay" id="menu">
   <div class="menu-inner">
     <h1>SHADOW FALL</h1>
-    <div class="sub">araf'ta bir söz: seni bulacağım</div>
+    <div class="sub">peşinden atladım</div>
     <div class="menu-buttons">
       <button class="text-btn" id="m-continue" style="display:none">DEVAM ET</button>
       <button class="text-btn" id="m-newgame">YENİ OYUN</button>
@@ -342,7 +429,7 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
       <button class="text-btn" id="m-options">AYARLAR</button>
     </div>
   </div>
-  <div class="version">SHADOW FALL · v4.0 · ARAF · 150 BÖLÜM</div>
+  <div class="version">SHADOW FALL · v6.0 · 100 BÖLÜM</div>
 </div>
 
 <!-- chapter select -->
@@ -373,7 +460,7 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
 
 <!-- death -->
 <div class="overlay" id="death-panel">
-  <div id="death-text">karanlık seni aldı</div>
+  <div id="death-text"></div>
   <button class="text-btn" id="d-retry">TEKRAR DENE</button>
   <button class="text-btn dim" id="d-menu">ANA MENÜ</button>
 </div>
@@ -403,6 +490,7 @@ body.cine #bar-top, body.cine #bar-bot { height:9vh; }
 <script src="js/creatures.js"></script>
 <script src="js/story.js"></script>
 <script src="js/levelgen.js"></script>
+<script src="js/missions.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
