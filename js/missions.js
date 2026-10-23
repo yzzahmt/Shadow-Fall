@@ -72,7 +72,7 @@ function buildMissionLevel(kind, H) {
       C.flat(420);
       // gerçek tehlike: çöken köprü + arkadan gelen yaratık
       L.tutorial.push({ x: H.getX() - 60, key: 'run' });
-      C.collapse();
+      C.collapse(true);
       C.flat(300);
       C.chase();
       C.flat(260);
@@ -100,7 +100,7 @@ function buildMissionLevel(kind, H) {
       L.platforms.push({ x: x + 120, y: gy0 - 160, w: 110, thick: 114, material: 'wood', look: 'beam', burning: true });
       L.triggers.push({ x: x - 40, text: UI_HINT('crouch'), icon: '⤓' });
       grove(460);
-      C.collapse(); grove(320);
+      C.collapse(true); grove(320);
       C.gap(); grove(420);
       x = H.getX();
       L.platforms.push({ x: x + 100, y: gy0 - 160, w: 110, thick: 114, material: 'wood', look: 'beam', burning: true });
@@ -159,7 +159,7 @@ function buildMissionLevel(kind, H) {
       /* SEKİZ KOLLU DEV — arkadan yeri sarsarak gelir; kollarıyla önüne vurur */
       C.flat(640);
       L.colossus = { triggerX: 520, speed: 168, catchUp: 260 };
-      C.gap(); C.flat(380); C.collapse(); C.flat(300);
+      C.gap(); C.flat(380); C.collapse(true); C.flat(300);
       C.spikes(); C.flat(420); C.gap(); C.flat(340);
       C.collapse(); C.flat(380); C.gap(); C.flat(300);
       L.colossus.endX = H.getX() + 20;
@@ -331,10 +331,12 @@ const Missions = {
     post.lineTo(c.x0 + c.n * c.pw + 5, c.y - 38); post.strokePath();
     for (let i = 0; i < c.n; i++) {
       const px = c.x0 + i * c.pw + c.pw / 2;
-      const sag = Math.sin((i + 0.5) / c.n * Math.PI) * 3;   // hafif sarkma; büyük basamak yürümeyi engelliyordu
-      const plat = { x: px - c.pw / 2, y: c.y + sag, w: c.pw - 2, thick: 10, material: 'wood', _collapse: true };
+      /* sarkma yalnız görüntüde: fizikte tahtalar düz ve bitişik — aradaki 2 px boşluk ve
+         1-3 px basamaklar oyuncuyu her ekte takıyordu (köprüde yerinde sayma) */
+      const sag = Math.sin((i + 0.5) / c.n * Math.PI) * 3;
+      const plat = { x: px - c.pw / 2, y: c.y, w: c.pw, thick: 10, material: 'wood', _collapse: true };
       sc.platforms.push(plat);
-      const body = sc.matter.add.rectangle(px, c.y + sag + 5, c.pw - 2, 10, {
+      const body = sc.matter.add.rectangle(px, c.y + 5, c.pw, 10, {
         isStatic: true, friction: 0.9, label: 'platform:wood',
         collisionFilter: { category: CAT.WORLD, mask: 0xFFFF },
       });
@@ -343,12 +345,20 @@ const Missions = {
       g.fillRect(-c.pw / 2 + 1, -5, c.pw - 4, 9);
       g.lineStyle(1, 0x1c1c24, 0.8);
       g.beginPath(); g.moveTo(-c.pw / 2 + 6, -1); g.lineTo(c.pw / 2 - 8, -1); g.strokePath();
+      /* çökecek köprü belli olsun: tahtalar çatlak, aralarda boşluk */
+      if (!c.stable) {
+        g.lineStyle(1.2, 0x2a2a34, 0.9);
+        const cx = ((i * 37) % 30) - 15;
+        g.beginPath(); g.moveTo(cx - 6, -5); g.lineTo(cx, 0); g.lineTo(cx - 3, 4); g.strokePath();
+        g.fillStyle(0x000000, 1); g.fillRect(c.pw / 2 - 6, -5, 3, 9);
+      }
       g.setPosition(px, c.y + sag + 5);
-      pieces.push({ body, g, plat, gone: false });
+      pieces.push({ body, g, plat, gone: false, home: { x: px, y: c.y + sag + 5 } });
     }
-    return { ...c, pieces, fired: false };
+    return { ...c, pieces, fired: false, timers: [] };
   },
   _updateCollapse(sc, C, P) {
+    if (C.stable) return;
     const px = P.body.position.x;
     if (!C.fired && px > C.x0 + 14 && px < C.x0 + C.n * C.pw && P.grounded) {
       C.fired = true;
@@ -356,16 +366,31 @@ const Missions = {
       SFAudio.leverCreak?.();
       sc.cameras.main.shake(400, 0.004);
       C.pieces.forEach((pc, i) => {
-        const delay = 520 + i * 270;
+        /* bir kez düştüysen köprü yavaş çöker: yürüyerek de geçilir */
+        const delay = C.eased ? 900 + i * 760 : 520 + i * 270;
         sc.tweens.add({ targets: pc.g, x: pc.g.x + 2, duration: 50, yoyo: true, repeat: 3, delay: delay - 250 });
-        sc.time.delayedCall(delay, () => {
+        C.timers.push(sc.time.delayedCall(delay, () => {
           pc.gone = true;
           sc.matter.world.remove(pc.body);
           const k = sc.platforms.indexOf(pc.plat); if (k >= 0) sc.platforms.splice(k, 1);
           SFAudio.thud(0.35);
           sc.tweens.add({ targets: pc.g, y: pc.g.y + 520, angle: (Math.random() - 0.5) * 140, alpha: 0, duration: 1300, ease: 'Quad.easeIn' });
-        });
+        }));
       });
+    }
+  },
+  /* düşüp köprünün gerisine geri konunca çöken köprü yeniden kurulur —
+     yoksa boşluk zıplanamaz, oyuncu orada sıkışır */
+  restoreCollapses(sc, safeX) {
+    for (const C of (sc.mis?.collapses ?? [])) {
+      if (!C.fired || safeX > C.x0 + C.n * C.pw) continue;
+      C.timers.forEach(t => t.remove(false)); C.timers = [];
+      for (const pc of C.pieces) {
+        sc.tweens.killTweensOf(pc.g);
+        pc.g.setPosition(pc.home.x, pc.home.y).setAngle(0).setAlpha(1);
+        if (pc.gone) { sc.matter.world.add(pc.body); sc.platforms.push(pc.plat); pc.gone = false; }
+      }
+      C.fired = false; C.eased = true;
     }
   },
 

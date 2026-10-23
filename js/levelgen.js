@@ -400,12 +400,14 @@ function genLevel(n) {
       x = doorX + 120;
     },
 
-    /* ÇÖKEN KÖPRÜ — üstüne basınca arkandan parça parça çöker: koş! */
-    collapse() {
+    /* KÖPRÜ — çoğu sağlamdır. Bölüm başına en fazla biri çöker (çatlak tahtalı):
+       üstüne basınca arkandan parça parça çöker, koş! force: görev / öğretici köprüsü */
+    collapse(force) {
       const nP = 7 + Math.floor(rng() * 3);
       const pw = 64;
+      const falls = force === true || (!L.collapses.some(c => !c.stable) && rng() < 0.5);
       endSeg(x);
-      L.collapses.push({ x0: x, y: gy, n: nP, pw });
+      L.collapses.push({ x0: x, y: gy, n: nP, pw, stable: !falls });
       x += nP * pw;
       jumpTo(x);
       x += 60;

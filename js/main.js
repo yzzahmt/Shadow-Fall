@@ -1294,6 +1294,7 @@ class GameScene extends Phaser.Scene {
     UI.updateHP(this.hp, this.hpMax, true);
     this.fx.setLowHp(this.hp <= 1 ? 0.8 : this.hp <= 2 ? 0.35 : 0);
     this.fx.hitFlash(0.4);
+    Missions.restoreCollapses(this, P.safe.x);
     MatterLib.Body.setPosition(P.body, { x: P.safe.x, y: P.safe.y - 4 });
     MatterLib.Body.setVelocity(P.body, { x: 0, y: 0 });
     P.hang = null; P.mantle = null; P.slip = null; P.slideT = 0; P.rollT = 0; P.carryVx = 0;

@@ -355,6 +355,36 @@ const CASES = {
       return sc.hp === sc.hpMax ? true : `hp ${sc.hp}/${sc.hpMax}`;
     });
   },
+  /* çöken köprü: yürüyerek girince çöker, düşünce köprü geri kurulur ve yavaş çöker
+     (eskiden köprü geri gelmiyor, oyuncu boşluğun kenarında sıkışıyordu) */
+  async bridgeRestore(page) {
+    return page.evaluate(async () => {
+      const sc = await H.start(H.find(L => (L.collapses ?? []).some(c => !c.stable) && !L.mission && !L.interior));
+      sc.creatures.forEach(c => { c.dead = true; });
+      const C = sc.mis.collapses.find(c => !c.stable);
+      const end = C.x0 + C.n * C.pw;
+      H.tp(sc, C.x0 - 70, C.y - 34);
+      await H.frames(20);
+      Input.right = true;
+      const fell = await H.until(() => sc.hp < sc.hpMax, 8000);
+      if (!fell) { Input.right = false; return `walking onto the collapsing bridge did not drop the player (lv ${sc.levelId} x ${sc.player.body.position.x.toFixed(0)} x0 ${C.x0.toFixed(0)} hp ${sc.hp}/${sc.hpMax} fired ${C.fired})`; }
+      if (C.pieces.some(p => p.gone)) { Input.right = false; return 'bridge not restored after fall'; }
+      const crossed = await H.until(() => sc.player.body.position.x > end + 60 && sc.player.grounded, 14000);
+      Input.right = false;
+      if (!crossed) return `could not cross after restore (x ${sc.player.body.position.x.toFixed(0)}, end ${end.toFixed(0)})`;
+      return sc.hp === sc.hpMax - 1 ? true : `fell more than once (hp ${sc.hp}/${sc.hpMax})`;
+    });
+  },
+  /* köprüler çoğunlukla sağlam: bölüm başına en fazla bir çöken köprü */
+  async bridgeCount(page) {
+    return page.evaluate(async () => {
+      for (let n = 1; n <= 100; n++) {
+        const k = (getLevel(n).collapses ?? []).filter(c => !c.stable).length;
+        if (k > 1) return `level ${n} has ${k} collapsing bridges`;
+      }
+      return true;
+    });
+  },
   /* havada ikinci zıplama: yakındaki kenara uzanıp tutunur; kenar yoksa bir şey olmaz */
   async airGrab(page) {
     return page.evaluate(async () => {

@@ -36,6 +36,28 @@ KALDIĞIMIZ YER — 23 Ekim 2026
   [x] HDD'deki boş ShadowFall klasörü, _yedek_test.txt, touch_end.png
       silindi.
 
+  KÖPRÜ HATALARI (23 Ekim, akşam):
+  [x] Çöken köprüden düşünce oyuncu SIKIŞIYORDU: 1 can gidip köprünün
+      başına konuyordun ama köprü artık yoktu; 450–576 px'lik boşluk
+      zıplanamıyordu, düşe düşe ölüyordun. Artık düşünce köprü yeniden
+      kuruluyor ve ikinci seferde YAVAŞ çöküyor (yürüyerek de geçilir).
+      (js/missions.js → restoreCollapses, main.js → fallBack)
+  [x] Köprüler her seferinde çökmüyor: eskiden 39 bölümde 62 çöken köprü
+      vardı (bazı bölümlerde 3). Artık köprülerin çoğu SAĞLAM; bölüm başına
+      en fazla 1 çöken köprü (26 bölümde). Öğretici, yangın ve dev
+      bölümlerindeki köprü görevin parçası olduğu için çöker.
+      (js/levelgen.js → collapse)
+  [x] Çökecek köprü belli: tahtalar çatlak, aralarında boşluk var.
+      Sağlam köprü düz tahta.
+  [x] Köprüde titreme: tahtalar fizikte 2 px aralıklı ve 1–3 px farklı
+      yükseklikteydi, karakter her ekte zıplayıp takılıyordu. Fizikte
+      tahtalar artık düz ve bitişik; sarkma yalnız görüntüde.
+  [x] Atlama noktaları denendi (12 bölümde tüm boşluklar, yürüyerek ve
+      koşarak): hata yok. Takılınan yerler bulmaca kapısı / ızgaraydı.
+  [x] Yeni testler: bridgeRestore (düş → köprü geri gelir → geçilir),
+      bridgeCount (bölüm başına en fazla 1 çöken köprü).
+  [x] .aab ve debug APK bu düzeltmelerle yeniden derlendi.
+
 SIRADA (yapılacaklar):
   [ ] Oyunu GÜNCEL klasörden aç ve dene; yeni sembollere bak.
   [ ] Telefonu USB ile bağla (geliştirici seçenekleri → USB hata
