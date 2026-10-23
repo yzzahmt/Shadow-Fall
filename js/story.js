@@ -4,8 +4,8 @@
    açılan yarığa düşer. Kai onu kurtarmak için peşinden atlar.
    Gözünü açtığında Maria yoktur.
    --------------------------------------------------------
-   Anlatım kuralı: hikâye yalnız GİRİŞTE ve SON BÖLÜMDE anlatılır.
-   Aradaki 98 bölümde altyazı / konuşma yok — sadece oyun öğreticisi.
+   Anlatım kuralı: hikâye yalnız GİRİŞTE ve SON BÖLÜMDE, sözsüz anlatılır.
+   Hiçbir yerde altyazı / konuşma yok — sadece kontrol ve bulmaca kartları.
    ============================================================ */
 'use strict';
 
@@ -40,7 +40,7 @@ function UI_HINT(k) {
     flash:  ['Feneri açıp kapatmak için karaktere dokun.', '[F] el feneri. Pil biterse [E] ile yenisini tak.'],
     fire:   ['Düşmana dokun: ateş. Şarjör bitince kendiliğinden değişir.', '[X] ateş — [R] şarjör değiştir.'],
     heal:   ['Sol üstteki bandaja dokun: yaranı sar.', '[Q] bandaj sar.'],
-    ledge:  ['Kenara atla: tutunursun. Yukarı fırlat: tırman. Aşağı: bırak.', 'Kenara atla: tutunursun. [W] tırman — [S] bırak.'],
+    ledge:  ['Kenara atla: tutunursun. Havada bir daha yukarı fırlat: yakındaki kenara uzan. Yukarı: tırman, aşağı: bırak.', 'Kenara atla: tutunursun. Havada bir daha [W]: yakındaki kenara uzan. [W] tırman — [S] bırak.'],
     edge:   ['Yürürken uçurum kenarında durursun. Geçmek için zıpla.', 'Yürürken uçurum kenarında durursun. Geçmek için [W].'],
     stealth:['Eğil, siperin arkasında kal, ışıkta durma. Koşmak ses çıkarır.', '[S] eğil, siperin arkasında kal, ışıkta durma. Koşmak ses çıkarır.'],
     dark:   ['Fenersiz göremezsin — ama fener açıkken düşmanlar da seni görür.', 'Fenersiz göremezsin — ama fener açıkken [F] düşmanlar da seni görür.'],
@@ -55,13 +55,5 @@ function UI_HINT(k) {
 /* ---- ölüm ekranı: yazı yok, sadece tuşlar ---- */
 const DEATH_LINES = [''];
 
-/* ---- oyun sonu jenerik satırları (yalnız final) ---- */
-const ENDING_LINES = [
-  'Işık ikimizi de aldı.',
-  'Gözümü ormanda, yarığın kenarında açtım. Sabah olmuştu.',
-  'Maria yanımdaydı. Nefes alıyordu.',
-  '"Kai" dedi. "Peşimden atladın."',
-  '"Atladım" dedim. "Yine atlarım."',
-  'Yarık yoktu. Sadece yaprak ve toprak.',
-  '— SON —',
-];
+/* ---- oyun sonu: konuşma / anlatım yok, yalnız kapanış ---- */
+const ENDING_LINES = ['— SON —'];

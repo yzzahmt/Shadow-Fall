@@ -1,7 +1,7 @@
 ================================================================
  SHADOW FALL — OYUN NOTLARI
  Temel mantık · yapılanlar · yapılacaklar · eksikler
- Son güncelleme: 12 Ekim 2026 (v6.0)
+ Son güncelleme: 16 Ekim 2026 (v1.1.0)
 ================================================================
 
 
@@ -12,7 +12,8 @@ Motor ....... Phaser 3.60 + Matter.js fiziği. Tek sayfa: index.html + js/
 Grafik ...... Hiç görsel dosya yok. Her şey kodla çiziliyor (siluet,
               ışık, sis, partikül). Karakterler kemik + IK ile anime.
 Ses ......... Hiç ses dosyası yok. Web Audio API ile üretiliyor.
-Kayıt ....... localStorage, anahtar: sf5_save (açılan bölüm + eşyalar)
+Kayıt ....... localStorage, anahtar: sf5_save (açılan bölüm + eşyalar),
+              sf_settings (ses, müzik, gren, dokunma hassasiyeti, titreşim)
 
 Oyun döngüsü:
   • Soldan sağa ilerle, bölüm sonundaki çıkışa ulaş.
@@ -21,11 +22,17 @@ Oyun döngüsü:
   • Düşmanlar ışığa ve sese tepki verir. Koşmak ses çıkarır;
     eğilmek ve siper (araba vb.) arkasında kalmak gizler.
   • 4 can hücresi. Bandaj 2 can doldurur. Ölünce son kontrol
-    noktasından devam.
+    noktasından devam (yolda yere dikili taş fenerler; geçince yanar).
+  • Bölümler sırayla açılır. Bölüm sonunda özet: süre, ölüm, bulunan
+    eşya. Geliştirirken tüm bölümleri açmak için adrese ?unlockall ekle.
   • Boss bölümleri kaldırıldı (v1.0.0): her bölümde en az bir bulmaca var.
+  • v1.1: bölümler uzun (8–17 bin px), 2–7 bulmaca (1–3'ü akıl oyunu),
+    10 yaratık türü; her türün duyusu ve hareket yeteneği farklı.
+    Oyun sona doğru belirgin biçimde zorlaşır (algı, hız, yaratık
+    sayısı artar; pil / bandaj / kontrol noktası azalır).
   • Her 2-4 bölümde bir ÖZEL GÖREV gelir (bkz. bölüm 4).
 
-Eşyalar: levye (kutu açar), anahtar, pil, bandaj, tabanca, şarjör,
+Eşyalar: levye (kutu açar; yerde durmaz — bagajda / dolapta bulunur), anahtar, pil, bandaj, tabanca, şarjör,
   sigorta (dükkân kepengi), not (şifre hanesi), pense ve talimat
   (bomba görevi).
 
@@ -42,6 +49,7 @@ MOBİL (joystick ve tuş YOK — tamamen dokunmatik hareket):
   • Düşmana dokun ..................... ateş (tabanca varsa)
   • Karaktere dokun ................... feneri aç/kapa (pil bittiyse pil değiştir)
   • Kutuya basılı tut ................. levyeyle aç / itilebilir kutuyu tut, it-çek
+  • Kör dehlizde karaktere dokun ...... yere vur (yankı); eğilmişken: sessiz vuruş
   • Sol üstteki bandaj ikonuna dokun .. yara sar
   • Mermi ikonuna dokun ............... şarjör değiştir (boşalınca zaten otomatik)
   • Araçta: sağa kaydır = gaz, sola = fren, aşağı = eğil, düşmana dokun = ateş
@@ -49,7 +57,8 @@ MOBİL (joystick ve tuş YOK — tamamen dokunmatik hareket):
 KLAVYE:
   A/D veya ok tuşları: yürü · Shift basılı: koş
   W / Boşluk: zıpla · S: eğil (koşarken: kay) · E: kullan (basılı: tut/levye)
-  F: fener · X: ateş · R: şarjör · Q: bandaj · Esc: duraklat
+  F: fener (kör dehlizde: yere vur) · X: ateş · R: şarjör · Q: bandaj · Esc: duraklat
+  Ayarlar: dokunma hassasiyeti (%50–150) ve titreşim açık/kapalı.
 
 KENARLAR (v6):
   • Yürürken uçurum kenarında durur, sendeler. Geçmek için zıpla.
@@ -58,6 +67,8 @@ KENARLAR (v6):
   • Tutunurken: W / yukarı fırlat = tırman · S / aşağı = bırak ·
     ters yön + zıpla = boşluğa geri sıçra.
   • Koşarken sert inişte omuz üstü yuvarlanır (hasar almaz, hız korunur).
+  • Havadayken bir daha zıpla (yukarı fırlat / W): yakındaki kenara uzanıp tutunur.
+  • İnişler can götürmez; yalnız çukur ve dikenler öldürür.
 
 
 3) HİKÂYE (kısa)
@@ -71,10 +82,12 @@ KENARLAR (v6):
           atkısı. Alınca boynunda taşır (oyunun tek renk aksanı).
   2-99    ALTYAZI / KONUŞMA YOK. Yalnız öğretici kartları (kontrol ve
           bulmaca ipuçları). Askerler konuşmaz; başlarında ? ! … çıkar.
-  100     Geçit bekçisi + final: Maria ışığın önünde. Tek konuşma sahnesi
-          + jenerik.
+  100     Final: Maria ışığın önünde; koşup sarılır, ışık her şeyi kaplar.
+          Sözsüz. Kapanışta yalnız "— SON —".
 
-  Anlatım kuralı: hikâye yalnız girişte ve finalde. Metinler: js/story.js
+  Anlatım kuralı: hikâye yalnız girişte ve finalde, SÖZSÜZ. Hiçbir yerde
+  altyazı / konuşma yok (v1.1: final konuşmaları, girişin sonundaki
+  "YARIK" başlık kartı ve jenerik anlatımı da kaldırıldı).
 
 
 4) BÖLÜM YAPISI — 100 BÖLÜM, 10 PERDE
@@ -86,15 +99,16 @@ KENARLAR (v6):
   Perde 5  FABRİKA     41-50    Perde 10 GEÇİT       91-100
 
   ÖZEL GÖREVLER (js/missions.js → MISSIONS):
-    1  öğretici          26 8 kollu dev     55 araba kaçışı    77 araba kaçışı
-    4  kilitli evler     28 dükkân          58 8 kollu dev     83 yangın
-    6  orman yangını     33 su baskını      62 dükkân          85 8 kollu dev
-    12 dükkân            36 yangın          64 yangın          87 BOMBA
-    15 araba kaçışı      38 fabrika kilidi  66 araba kaçışı    92 tekne kaçışı
-    18 fabrika kilidi    43 su baskını      68 su baskını      94 8 kollu dev
-    23 tekne kaçışı      45 fabrika kilidi  72 fabrika kilidi
-                         47 yangın          75 su baskını
-                         52 tekne kaçışı
+    1  öğretici          28 dükkân          53 SON TREN        75 su baskını
+    4  kilitli evler     33 su baskını      55 araba kaçışı    77 araba kaçışı
+    6  orman yangını     34 ASANSÖR         58 8 kollu dev     79 ASANSÖR
+    12 dükkân            36 yangın          62 dükkân          83 yangın
+    14 SON TREN          37 KÖR DEHLİZ      66 araba kaçışı    84 KÖR DEHLİZ
+    15 araba kaçışı      38 fabrika kilidi  67 yangın          85 8 kollu dev
+    18 fabrika kilidi    42 ASANSÖR         68 su baskını      87 BOMBA
+    23 tekne kaçışı      43 su baskını      71 SON TREN        92 tekne kaçışı
+    26 8 kollu dev       47 yangın          72 fabrika kilidi  94 8 kollu dev
+                         49 ASANSÖR         52 tekne kaçışı    98 KÖR DEHLİZ
 
   Görev türleri:
     • ÖĞRETİCİ: yürü, zıpla, eğil, eşya al, levyeyle kutu aç, kutu it,
@@ -123,6 +137,17 @@ KENARLAR (v6):
       Bombada: 4 vidayı basılı tutarak sök, kabloları doğru sırayla kes.
       Kırmızı = anında patlar. Yanlış kablo = -40 sn. İki hata = patlar.
       Süre: 3:45.
+    • ASANSÖR BOŞLUĞU (js/escapes.js): makine dairesinde jeneratöre pil
+      tak, kafese bin, kolu çek. Arkadan iki yaratık gelir; yukarıdan taş
+      düşer (önce toz süzülür — kenara çekil). Yarı yolda kablo bir an
+      boşalır, tepede kopmak üzeredir: 2.6 sn içinde üst kata çık.
+    • SON TREN: yol uçurumda biter. Vagona çıkınca (0.9 sn) tren kalkar,
+      270 px/sn'ye hızlanır. Damdayken alçak kirişlerde eğil. Köprü
+      yıkık: damdan üst geçide atla / kenarı yakala. Kalanlar boşluğa düşer.
+    • KÖR DEHLİZ: fener söner, dehliz zifiri. Yere vur: yankı halkası
+      yolu bir an gösterir. Yüksek vuruş 540 px gösterir ama Kör
+      Sürüngenleri uyandırır; eğilerek vuruş 250 px, sessiz. Çukurlar
+      ışık vermez; en yakın boşluktan damla, çıkıştan çan sesi gelir.
 
   Normal bölümlerde de: 2. bölümden itibaren her bölüme en az bir
   aksiyon sahnesi (çöken köprü / kovalamaca / pusu) erken yerleşir.
@@ -256,26 +281,12 @@ Yapı
   • İniş: dizler yükü alıyor, gövde öne katlanıyor, kollar öne uzanıyor.
 
 
-6) YAPILACAKLAR (öncelik sırasıyla)
+6) YAPILACAKLAR
 ----------------------------------------------------------------
-  [ ] Gerçek telefonda oynanış testi (iPhone + orta seviye Android):
-      FPS, dokunma hissi, jest eşikleri (kaydırma 16px, fırlatma hızı).
-  [ ] Görev dengesi: yangın hızı, dev hızı, bomba süresi, araba rampa
-      hızı, su yükselme hızı — elle oynanıp ayarlanmalı.
-  [ ] Boss bölümlerinin her birine kendine özgü bir mekanik
-      (şu an çoğu "büyük yaratık + kapı").
-  [ ] Ayarlar menüsüne "kontrol hassasiyeti" ve "titreşim" seçenekleri.
-  [ ] Bölüm sonu özet ekranı (süre, ölüm sayısı, bulunan eşya).
-  [ ] Daha fazla görev çeşidi: asansör kaçışı, tren, karanlıkta
-      sadece sesle ilerleme.
-  [ ] v6 kenar sistemi gerçek cihazda elle denenmeli: tutunma penceresi,
-      kenarda durma mesafesi (şu an 10-13 px), refleks yakalama hissi.
-  [ ] Giriş ve uyanma sahnesinin zamanlaması gerçek hızda izlenmeli
-      (otomasyonda oyun yavaş aktığı için zaman ileri sarılarak bakıldı).
-  [ ] Kontrol noktası ikonları/ışıkları (şu an görünmez).
-  [ ] Yaratıklara ölüm/vurulma sesleri çeşitlendirme.
-  [ ] Ses: perde başına ayrı ortam katmanları (maden damlası, fabrika
-      makinesi, şehir rüzgârı).
+  Güncel liste: YAPILANLAR_VE_YAPILACAKLAR.txt → YAPILACAKLAR.
+  Kalanların hepsi gerçek cihazda / insanla oynanarak yapılacak işler:
+  telefonda test, kenar sistemi ve görev dengesi ince ayarı, giriş
+  zamanlaması, Play Console yüklemesi.
 
 
 7) BİLİNEN EKSİKLER / RİSKLER
@@ -288,36 +299,41 @@ Yapı
     "Ana ekrana ekle" ile açınca tam ekran olur.
   • Görevler uçtan uca bir insan tarafından oynanmadı; her mekanik ayrı
     ayrı tetiklenip ekran görüntüsüyle doğrulandı.
-  • Eski "araba anahtarı çalma" (yankesicilik) ve eski sürülebilir araba
-    kodu duruyor ama hiçbir bölümde kullanılmıyor.
   • Bomba bölümünde ölünce bölüm kontrol noktasından başlar ve süre
     sıfırlanır (bilerek affedici).
-  • SHADOW_FALL_PROMPT_V2.md eski tasarım belgesi; güncel değil.
-  • js/main.js içindeki Companion (Maria yoldaş YZ) sınıfı artık hiçbir
-    bölümde kullanılmıyor; ileride iki karakterli bölüm için duruyor.
   • v6 öncesi yedek: ~/ShadowFall_yedek_v5 (js/, index.html, notlar).
-  • Kökte _yedek_test.txt adında boş bir test dosyası kaldı; silinebilir.
-  • Klasörde boş bir .git klasörü var (yanlışlıkla oluşturuldu, commit
-    yok). İstemiyorsan silebilirsin: rm -rf .git
-  • Kökteki eski yardımcı dosyalar (patch*.py, fix_*.py, temp.js,
-    motor_engine.js, index_backup_*.html) oyunda kullanılmıyor.
+  • Kökteki _yedek_test.txt ve touch_end.png macOS korumalı (com.apple.macl);
+    terminalden silinemiyor, Finder'dan silinmeli. Git'te yok sayılıyorlar.
+  • Yeni görevler (asansör, tren, kör dehliz) otomasyonla doğrulandı;
+    insan eliyle oynanıp denge ayarı yapılmadı.
 
 
 8) DOSYA HARİTASI
 ----------------------------------------------------------------
-  index.html ........ sayfa, arayüz, HUD, paneller (bomba, şifre), CSS
+  index.html ........ sayfa, arayüz, HUD, paneller (bomba, şifre, özet), CSS
   js/main.js ........ oyun sahnesi, oyuncu, kenar sistemi, ses yayılımı,
-                      dokunmatik jestler, giriş + final sinematiği, arayüz
+                      dokunmatik jestler, kontrol noktaları, bölüm özeti,
+                      giriş + final sinematiği, arayüz, ayarlar
   js/human.js ....... insan rig'i: yürüme/koşma/zıplama/kayma, tutunma,
                       tırmanma, sendeleme, yuvarlanma, poz karışımı, asker rig'i
-  js/creatures.js ... kök canavarı, tazı, uzun adam, asker yapay zekâsı
+  js/creatures.js ... 6 eski yaratık türü + asker yapay zekâsı
+  js/creatures2.js .. Gözcü, Kemirgen Sürüsü, İzci, Taklitçi
+  js/ai.js .......... yaratık zekâsı: yüzey ağı, atlama/tırmanma, duyular,
+                      ses araştırma, arama, zorluk ölçeği
+  js/thinking.js .... akıl oyunları: lamba panosu, aynalar, terazi, saatler
   js/missions.js .... özel görevler: yerleşim + çalışma mantığı, dev, araçlar
-  js/levelgen.js .... 100 bölümlük üreteç, perdeler, parçalar, boss arenaları
-  js/story.js ....... hikâye satırları, perde/boss adları, kontrol ipuçları
-  js/items.js ....... fizik eşyaları, kutular, kapılar, kollar, merdiven
+  js/escapes.js ..... asansör boşluğu, son tren, kör dehliz
+  js/puzzles.js ..... kanal, birleşik kaplar, karşı ağırlık, baskı plakası,
+                      ışık gözü, zamanlı kapı
+  js/buildings.js ... iki katlı evler, 2-3 bölüm süren yapılar, iç görünüm
+  js/levelgen.js .... 100 bölümlük üreteç, perdeler, parçalar, ganimet
+  js/story.js ....... hikâye satırları, perde adları, kontrol ipuçları
+  js/items.js ....... fizik eşyaları, kutular, saklama yerleri, kapılar,
+                      kollar, merdiven
   js/physics.js ..... su, rüzgâr, ışık/karanlık sistemi
   js/atmosphere.js .. paralaks, sis, gren, vinyet, korku/ısı efektleri
-  js/audio.js ....... tüm sesler ve ambient müzik
+  js/music.js ....... müzik yönetmeni + 18 parça
+  js/audio.js ....... efektler, ortam (hava + perde sesleri), yaratık sesleri
 
   Çalıştırma: klasörde `npm run serve` (http://localhost:8765),
   tarayıcıda http://localhost:8765 . Telefonda aynı ağdan bilgisayarın

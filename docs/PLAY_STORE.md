@@ -4,9 +4,9 @@
 
 | Item | Path |
 |---|---|
-| Signed release bundle | `release/ShadowFall-v1.0.0-release.aab` (not committed) |
+| Signed release bundle | `release/ShadowFall-v1.1.0-release.aab` (not committed) |
 | Application ID | `net.yazify.shadowfall` |
-| Version | `1.0.0` (versionCode `1`) |
+| Version | `1.1.0` (versionCode `2`) |
 | Target / min SDK | 36 / 24 |
 | App icon 512×512 | `assets/store/icon-512.png` |
 | Feature graphic 1024×500 | `assets/store/feature-graphic-1024x500.png` |
@@ -31,6 +31,10 @@ cd android && ./gradlew bundleRelease
 
 `android/keystore.properties` must point at the keystore (copy it from the folder above).
 The project uses Gradle 9.5 so it runs on the JDK bundled with current Android Studio.
+Outside Android Studio point `JAVA_HOME` at that JDK
+(`/Applications/Android Studio.app/Contents/jbr/Contents/Home`). If resource merging fails with
+`AAPT: error: file failed to compile` on the launcher icons, build with the SDK's aapt2:
+`./gradlew bundleRelease -Pandroid.aapt2FromMavenOverride=$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2`.
 
 ## Store listing (Türkçe)
 
@@ -52,6 +56,8 @@ sisli bir kuleye uzanan yolda tek bir ışığın var: elindeki fener.
 • Altı farklı yaratık: titreşimi duyan kör sürüngen, yalnız ışıktan korkan süzülen gölge,
   duvara toslayana kadar hücum eden koca ve dahası.
 • Yıldırımla başlayıp ağaçtan çimene yayılan yangın, yükselen sular, çöken köprüler.
+• Kablosu kopmak üzere olan maden asansörü, yıkık köprüye giden son tren ve fenerin
+  sönüp yolu yalnız yankıyla bulduğun kör dehliz.
 • Sahneye göre değişen müzik: keşif, gizlilik, kovalamaca, kaçış, bulmaca temaları.
 • Joystick yok, tuş yok: tamamen dokunmatik hareketler.
 • Reklam yok, internet gerekmez, kişisel veri toplanmaz.

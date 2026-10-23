@@ -190,6 +190,7 @@ class PhysItem {
     this.kind = kind;
     const def = ITEM_DEFS[kind];
     this.def = def;
+    this.src = opts.src ?? (kind + '@' + Math.round(x / 40));   // bölüm özetinde "bulunan eşya" anahtarı
     const col = opts.color ?? 0x101016;
 
     this.gfx = scene.add.graphics().setDepth(opts.depth ?? 96);
@@ -344,6 +345,7 @@ class Crate {
         const [k, ...meta] = kind.split(':');          // 'note:shop1:2' → not + kilit bilgisi
         const it = new PhysItem(this.scene, k, this.x + (Math.random() - 0.5) * 14, this.y - this.h / 2 - 6, {
           vx: (Math.random() - 0.5) * 5, vy: -4 - Math.random() * 3, depth: 97, meta: meta.join(':'),
+          src: 'k' + Math.round(this.x) + ':' + i,
         });
         this.scene.physItems.push(it);
       });
@@ -381,6 +383,7 @@ const CONTAINER_DEFS = {
   chest:    { label: 'SANDIĞI AÇ',         w: 58, h: 36, med: true,  reach: 'low' },
   ammo:     { label: 'CEPHANE KUTUSUNU AÇ', w: 46, h: 24, med: false, reach: 'low' },
   vent:     { label: 'IZGARAYI SÖK',       w: 32, h: 22, med: false, reach: 'low', mountY: 30 },
+  trunk:    { label: 'BAGAJI AÇ',          w: 150, h: 70, med: false, reach: 'mid', mountY: 42 },
 };
 const ITEM_NAMES = {
   bandage: 'BANDAJ', battery: 'PİL', mag: 'ŞARJÖR', key: 'ANAHTAR', fuse: 'SİGORTA', crowbar: 'LEVYE',
@@ -444,7 +447,7 @@ class Container {
       this.contents.forEach((raw, i) => {
         const [k, ...meta] = raw.split(':');
         sc.time.delayedCall(i * 220, () => {
-          sc.collectItem(k, { meta: meta.join(':') });
+          sc.collectItem(k, { meta: meta.join(':'), src: 'c' + Math.round(this.x) + ':' + i });
           SFAudio.pickup();
           this._float('+ ' + (ITEM_NAMES[k] ?? k.toUpperCase()), 0xe2ded6, i);
         });
@@ -550,6 +553,26 @@ class Container {
         if (!this.opened) { g.fillStyle(0x2a2a30, 0.8); g.fillEllipse(x + 3, this.y + 5, 6, 4); }
         break;
       }
+      case 'trunk': {                          // terk edilmiş araba: bagaj arkada (solda), kapak yukarı kalkar
+        const rx = x - 12, L = 162;
+        g.fillRoundedRect(rx, gy - 46, L, 28, 6);
+        g.beginPath(); g.moveTo(rx + 44, gy - 44); g.lineTo(rx + 64, gy - 70); g.lineTo(rx + 114, gy - 70); g.lineTo(rx + 138, gy - 44); g.closePath(); g.fillPath();
+        g.fillStyle(0x16171d, 1);                                   // kırık camlar
+        g.beginPath(); g.moveTo(rx + 52, gy - 46); g.lineTo(rx + 67, gy - 66); g.lineTo(rx + 86, gy - 66); g.lineTo(rx + 80, gy - 54); g.lineTo(rx + 86, gy - 46); g.closePath(); g.fillPath();
+        g.beginPath(); g.moveTo(rx + 92, gy - 46); g.lineTo(rx + 92, gy - 66); g.lineTo(rx + 111, gy - 66); g.lineTo(rx + 129, gy - 46); g.closePath(); g.fillPath();
+        g.fillStyle(0x08080b, 1);
+        g.fillCircle(rx + 34, gy - 13, 12);
+        g.fillEllipse(rx + 130, gy - 7, 28, 13);                   // patlak lastik
+        g.fillStyle(c, 1);
+        g.strokeRect(rx + 2, gy - 44, 32, 20);
+        if (o > 0) {
+          g.fillStyle(0x050507, 1); g.fillRect(rx + 3, gy - 45, 30, 8);
+          const a = o * 1.25, hx = rx + 36, hy = gy - 46;
+          g.lineStyle(5, c, 1);
+          g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx - Math.cos(a) * 34, hy - Math.sin(a) * 34); g.strokePath();
+        } else { g.fillStyle(c, 1); g.fillRect(rx, gy - 48, 36, 4); }
+        break;
+      }
       case 'glovebox': {
         g.fillStyle(edge, 1); g.fillRect(x - 9, this.y - 5, 18, 10);
         if (o > 0) { g.fillStyle(0x050507, 1); g.fillRect(x - 8, this.y - 4, 16, 8); g.fillStyle(edge, 1); g.fillRect(x - 9, this.y + 5, 18, 3 * o); }
@@ -588,6 +611,7 @@ class PushBox {
   constructor(scene, cfg) {
     this.scene = scene;
     this.w = cfg.w ?? 70; this.h = cfg.h ?? 70;
+    this.weight = cfg.weight ?? (this.w < 50 ? 1 : this.w < 65 ? 2 : 3);   // terazi bulmacası: boy = ağırlık
     this.col = cfg.color ?? 0x0e0e14;
     this.body = scene.matter.add.rectangle(cfg.x, cfg.y ?? (cfg.groundY - this.h / 2 - 1), this.w, this.h, {
       density: cfg.density ?? 0.0045,
@@ -831,95 +855,6 @@ class Generator {
     } else {
       g.fillStyle(0xd8d4c8, 0.25 + Math.sin(this.scene.time.now * 0.003) * 0.15);
       g.fillCircle(x - 11, y - 30, 2);
-    }
-  }
-}
-
-/* ---------------- SÜRÜLEBİLİR ARABA ---------------- */
-class DriveCar {
-  /** cfg: { x, groundY, travelTo } — anahtar gerekir, çalıştırınca barikatları ezerek ilerler */
-  constructor(scene, cfg) {
-    this.scene = scene;
-    this.x = cfg.x; this.groundY = cfg.groundY;
-    this.travelTo = cfg.travelTo;
-    this.started = false;
-    this.driving = false;
-    this.done = false;
-    this.gfx = scene.add.graphics().setDepth(94);
-    this.wheelRot = 0;
-    // fiziksel siper gövdesi
-    this.body = scene.matter.add.rectangle(this.x, this.groundY - 26, 170, 44, {
-      isStatic: true, label: 'drivecar', friction: 0.9,
-      collisionFilter: { category: CAT.WORLD, mask: 0xFFFF },
-    });
-    this.headlight = null;
-    this.draw();
-  }
-  start() {
-    if (this.started) return;
-    this.started = true;
-    this.engine = SFAudio.carEngine();
-    SFAudio.carStart?.();
-    if (this.scene.lights2) {
-      this.headlight = this.scene.lights2.addLight({ x: this.x + 95, y: this.groundY - 34, r: 260, type: 'cone', facing: 1, intensity: 1 });
-    }
-    this.scene.time.delayedCall(1400, () => { this.driving = true; });
-  }
-  update(dt) {
-    if (this.driving && !this.done) {
-      const speed = 240;
-      this.x += speed * dt;
-      this.wheelRot += speed * dt * 0.06;
-      Phaser.Physics.Matter.Matter.Body.setPosition(this.body, { x: this.x, y: this.groundY - 26 });
-      if (this.headlight) { this.headlight.x = this.x + 95; this.headlight.y = this.groundY - 34; }
-      // barikat ezme
-      this.scene.crushBarricadesAt?.(this.x + 90);
-      if (this.x >= this.travelTo) {
-        this.done = true; this.driving = false;
-        this.engine?.stop(1.5);
-        SFAudio.thud(0.5);
-        this.scene.onCarArrived?.(this);
-      }
-      this.draw();
-    }
-  }
-  draw() {
-    const g = this.gfx; g.clear();
-    const c = 0x0a0a0f;
-    const x = this.x, y = this.groundY;
-    g.fillStyle(c, 1);
-    // jip gövdesi
-    g.fillRoundedRect(x - 85, y - 46, 170, 30, 6);
-    g.fillRect(x - 50, y - 70, 88, 28);
-    g.fillStyle(0x16171d, 0.9);
-    g.fillRect(x - 42, y - 64, 32, 18);  // cam
-    g.fillRect(x - 2, y - 64, 30, 18);
-    g.fillStyle(c, 1);
-    // tekerler
-    for (const wx of [-52, 52]) {
-      g.fillCircle(x + wx, y - 14, 15);
-      g.fillStyle(0x1c1d24, 1);
-      g.fillCircle(x + wx, y - 14, 6);
-      // jant kolu — dönüş görünür
-      g.lineStyle(2, 0x1c1d24, 1);
-      g.beginPath();
-      g.moveTo(x + wx, y - 14);
-      g.lineTo(x + wx + Math.cos(this.wheelRot) * 12, y - 14 + Math.sin(this.wheelRot) * 12);
-      g.strokePath();
-      g.fillStyle(c, 1);
-    }
-    // farlar
-    if (this.started) {
-      g.fillStyle(0xf0e8d0, 0.9);
-      g.fillCircle(x + 84, y - 36, 3.4);
-      g.fillStyle(0xf0e8d0, 0.12);
-      g.fillTriangle(x + 86, y - 40, x + 86, y - 30, x + 230, y - 18);
-    } else {
-      g.fillStyle(0x1c1d24, 1);
-      g.fillCircle(x + 84, y - 36, 3);
-      // kontak parıltısı
-      g.fillStyle(0xd8d4c8, 0.3 + Math.sin(this.scene.time.now * 0.0025) * 0.18);
-      g.fillCircle(x + 20, y - 52, 1.8);
     }
   }
 }

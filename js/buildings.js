@@ -170,6 +170,11 @@ function buildInteriorLevel(H, B, part) {
   rooms.push(pool[1 % pool.length]);
   if (H.n >= 3) rooms.push('creature');
   if (parts === 1 || !first) rooms.push(pool[2 % pool.length]);
+  if (H.n >= 40) rooms.push(pool[3 % pool.length]);
+  /* akıl oyunu odaları: pano, aynalar, terazi, saatler */
+  const think = shuffleWith(rng, THINK_TYPES);
+  for (let i = 0; i < (H.n < 15 ? 1 : 2); i++) rooms.splice(1 + Math.floor(rng() * rooms.length), 0, think[i]);
+  if (H.n >= 25) rooms.splice(Math.floor(rng() * rooms.length), 0, 'creature');
   rooms.splice(1 + Math.floor(rng() * 2), 0, 'stash');
   rooms.forEach((r, i) => {
     C[r]?.();

@@ -7,7 +7,7 @@
    - Wraith: fısıltı — süzülür, durmaz, yalnız fener ışığı durdurur
    - Brute: koca — düz hat boyunca hücum eder, duvara tosları sersemler
    - Soldier: devriye + fener konisi + karanlık farkındalığı, ses takibi,
-     arama, kuşatma, şarjör değiştirir, araba anahtarı taşıyabilir
+     arama, kuşatma, şarjör değiştirir
    Hepsi hearNoise(x, güç) ile sahnedeki seslere tepki verir.
    Tüm yaratıklar ışık seviyesine göre algılar: zifiri karanlıkta
    fener kapalıysa oyuncu görünmezdir.
@@ -30,24 +30,7 @@ function creatureTerritory(scene, cfg) {
   const hi = Math.max(cfg.patrolMaxX ?? cfg.x, r ? r[1] : cfg.x);
   return [lo, hi];
 }
-/* oyuncuya ulaşabilir mi: bölgesinin içinde ve çok yukarıda değil */
-function creatureCanReach(cr, player) {
-  const [lo, hi] = cr.terr;
-  return player.x > lo - 12 && player.x < hi + 12 && player.y > cr.groundY - 240 && Math.abs(player.x - cr.x) < 1500;
-}
-/* kovalarken: ulaşamıyorsa birkaç saniye bekleyip vazgeçer (kenarda durup bağırır) */
-function creatureGiveUp(cr, player, dt) {
-  if (creatureCanReach(cr, player)) { cr.loseT = 0; return false; }
-  cr.loseT = (cr.loseT ?? 0) + dt;
-  if (cr.loseT > 0.2 && !cr._roaredLost) { cr._roaredLost = true; SFAudio.monsterRoar(false); }
-  if (cr.loseT > 3) { cr.loseT = 0; cr._roaredLost = false; return true; }
-  return false;
-}
-function creatureClamp(cr) {
-  const chasing = !['lurk', 'prowl', 'wander', 'idle', 'dead'].includes(cr.state);
-  const lo = chasing ? cr.terr[0] : cr.minX - 60, hi = chasing ? cr.terr[1] : cr.maxX + 60;
-  cr.x = clamp(cr.x, lo, hi);
-}
+/* ulaşabilirlik, vazgeçme ve hareket: bkz. ai.js (creatureCanReach, creatureGiveUp, creatureClamp) */
 
 /* ortak: yaratık ilk kez fark ettiğinde korku vurgusu (çığlık + ekran) */
 function creatureScare(cr, power = 1) {
@@ -63,7 +46,7 @@ function creatureScare(cr, power = 1) {
    yüzünde tek bir kızıl yarık göz. Fark edince arka ayakları üstüne
    kalkıp kollarını açar. Ölünce yığılır, kökleri toprağa çöker. */
 class Stalker {
-  /** cfg: { x, groundY, scale, patrolMinX, patrolMaxX, hp, boss, name, charges } */
+  /** cfg: { x, groundY, scale, patrolMinX, patrolMaxX, hp, charges } */
   constructor(scene, cfg) {
     this.scene = scene;
     this.type = 'stalker';
@@ -77,9 +60,7 @@ class Stalker {
 
     this.hp = cfg.hp ?? 6;
     this.maxHp = this.hp;
-    this.boss = !!cfg.boss;
-    this.name = cfg.name;
-    this.canCharge = cfg.charges ?? this.boss;
+    this.canCharge = !!cfg.charges;
     this.chaseSpeed = cfg.chaseSpeed;
     this.terr = creatureTerritory(scene, cfg);
 
@@ -130,7 +111,7 @@ class Stalker {
     this.facing = x > this.x ? 1 : -1;
     if (power >= 0.6 && x > this.minX - 120 && x < this.maxX + 120) {
       this.state = 'alert'; this.alertT = 0;
-      creatureScare(this, this.boss ? 1.2 : 0.9);
+      creatureScare(this, 0.9);
     }
   }
 
@@ -139,7 +120,7 @@ class Stalker {
     this.hp -= dmg;
     this.stunT = Math.max(this.stunT, 0.22);
     this.twitch = 1;
-    SFAudio.monsterRoar(false);
+    if (this.hp > 0) SFAudio.creatureHit('stalker');
     if (this.state === 'lurk') { this.state = 'alert'; this.alertT = 0; creatureScare(this, 0.8); }
     if (this.hp <= 0) this.die(dir);
   }
@@ -147,7 +128,7 @@ class Stalker {
   die(dir = 0) {
     this.dead = true;
     this.state = 'dead';
-    SFAudio.screech?.(0.7);
+    SFAudio.creatureDie('stalker');
     this.scene.cameras.main.shake(500, 0.012);
     this.deathT = 0;
   }
@@ -173,9 +154,7 @@ class Stalker {
     const px = player.x, py = player.y;
     const dx = px - this.x;
     const dist = Math.abs(dx);
-    const vf = visFactor(this.scene, px, py);
-    const playerInRoom = px > this.minX - 80 && px < this.maxX + 80;
-    const senseDist = 420 * vf + (player.crouching ? 0 : 60) + (player.noisy ? 140 : 0);
+    const senseDist = creatureSense(this, player);
     let rearT = 0;
 
     switch (this.state) {
@@ -184,9 +163,9 @@ class Stalker {
         if (this.x < this.minX - 10 || this.x > this.maxX + 10) {     // kovalamadan dönüş: yuvasına yürür
           this.facing = this.x < this.minX ? 1 : -1; this.vx = this.facing * 60 * this.s;
         }
-        if (playerInRoom && dist < senseDist) {
+        if (dist < senseDist && creatureCanReach(this, player)) {
           this.state = 'alert'; this.alertT = 0;
-          creatureScare(this, this.boss ? 1.2 : 1);
+          creatureScare(this, 1);
           this.roarCD = 6;
         }
         break;
@@ -388,7 +367,7 @@ class Stalker {
     if (!this.dead) {
       const hot = this.state !== 'lurk';
       const blink = (Math.sin(this.breathe * 0.7) > 0.97) ? 0.15 : 1;
-      const c = this.boss ? 0xe0705a : 0xc8483a;
+      const c = 0xc8483a;
       const a = (hot ? 0.95 : 0.4) * blink;
       const ex = head.x + f * 4 * s, ey = head.y - 1.5 * s;
       eg.fillStyle(c, a * 0.22); eg.fillEllipse(ex, ey, 12 * s, 7 * s);
@@ -411,7 +390,6 @@ class Hound {
     this.y = this.groundY - 30 * this.s;
     this.minX = cfg.patrolMinX; this.maxX = cfg.patrolMaxX;
     this.hp = cfg.hp ?? 3; this.maxHp = this.hp;
-    this.boss = !!cfg.boss; this.name = cfg.name;
     this.chaseSpeed = cfg.chaseSpeed;
     this.terr = creatureTerritory(scene, cfg);
     this.gfx = scene.add.graphics().setDepth(95);
@@ -443,9 +421,9 @@ class Hound {
     if (this.dead) return;
     this.hp -= dmg;
     this.stunT = 0.25;
-    SFAudio.houndYelp?.();
     if (this.state === 'prowl') { this.state = 'chase'; creatureScare(this, 0.7); }
-    if (this.hp <= 0) { this.dead = true; this.state = 'dead'; this.deathT = 0; }
+    if (this.hp <= 0) { this.dead = true; this.state = 'dead'; this.deathT = 0; SFAudio.creatureDie('hound'); }
+    else SFAudio.creatureHit('hound');
   }
 
   update(dt, player) {
@@ -461,8 +439,7 @@ class Hound {
 
     const px = player.x, py = player.y;
     const dx = px - this.x, dist = Math.abs(dx);
-    const vf = visFactor(this.scene, px, py);
-    const sense = 360 * vf + (player.crouching ? -40 : 40) + (player.noisy ? 120 : 0);
+    const sense = creatureSense(this, player);
     let jawT = 0.1;
 
     switch (this.state) {
@@ -471,7 +448,7 @@ class Hound {
         if (this.x > this.maxX + 70 || this.x < this.minX - 70) { this.facing = this.x < this.minX ? 1 : -1; this.vx = this.facing * 90 * this.s; }
         if (this.x > this.maxX) this.facing = -1;
         if (this.x < this.minX) this.facing = 1;
-        if (dist < sense && px > this.minX - 100 && px < this.maxX + 100) {
+        if (dist < sense && creatureCanReach(this, player)) {
           this.state = 'chase'; SFAudio.houndGrowl?.(true);
           creatureScare(this, 0.85);
         }
@@ -664,7 +641,6 @@ class Lurker {
     this.x = cfg.x; this.groundY = cfg.groundY;
     this.minX = cfg.patrolMinX; this.maxX = cfg.patrolMaxX;
     this.hp = cfg.hp ?? 5; this.maxHp = this.hp;
-    this.boss = !!cfg.boss; this.name = cfg.name;
     this.chaseSpeed = cfg.chaseSpeed;
     this.terr = creatureTerritory(scene, cfg);
     this.rig = new HumanRig(scene, { scale: this.s, depth: 95, color: 0x060609, variant: 'lurker', rimColor: 0x7a6a72, rimStrength: 1.1 });
@@ -673,6 +649,8 @@ class Lurker {
     this.vx = 0;
     this.state = cfg.startChase ? 'chase' : 'wander';
     this.stareT = 0; this.strikeT = 0; this.stunT = 0;
+    this.stareDur = 1.3;            // fark edince saldırmadan önce bakar
+    this.choppy = true;             // stop-motion hareket
     this.frameAcc = 0;
     this.dead = false;
     this.onStrike = null;
@@ -692,11 +670,11 @@ class Lurker {
     this.hp -= dmg;
     this.stunT = 0.3;
     this.rig.hurtT = 0.4;
-    SFAudio.monsterRoar(false);
     if (this.state === 'wander') { this.state = 'chase'; creatureScare(this, 0.8); }
+    if (this.hp > 0) SFAudio.creatureHit('lurker');
     if (this.hp <= 0) {
       this.dead = true; this.state = 'dead';
-      SFAudio.screech?.(0.5);
+      SFAudio.creatureDie('lurker');
       this.rig.startRagdoll(dir * 200, -150, () => this.groundY);
       this.eyeGfx.clear();
     }
@@ -711,8 +689,7 @@ class Lurker {
     else {
       const px = player.x, py = player.y;
       const dx = px - this.x, dist = Math.abs(dx);
-      const vf = visFactor(this.scene, px, py);
-      const sense = 380 * vf + (player.noisy ? 120 : 0);
+      const sense = creatureSense(this, player);
 
       switch (this.state) {
         case 'wander': {
@@ -727,7 +704,7 @@ class Lurker {
           this.facing = dx > 0 ? 1 : -1;
           this.stareT += dt;
           if (dist > sense + 140) this.state = 'wander';
-          else if (this.stareT > 1.3) { this.state = 'chase'; creatureScare(this, 1); }
+          else if (this.stareT > this.stareDur) { this.state = 'chase'; creatureScare(this, 1); }
           break;
         }
         case 'chase': {
@@ -756,7 +733,7 @@ class Lurker {
     /* bakış/gezinti sırasında stop-motion: rig yalnız ~12 kare/sn güncellenir */
     const chasing = this.state === 'chase';
     this.frameAcc += dt;
-    const choppy = this.state === 'stare' || this.state === 'wander';
+    const choppy = this.choppy && (this.state === 'stare' || this.state === 'wander');
     if (!choppy || this.frameAcc > 1 / 11) {
       const rdt = choppy ? this.frameAcc : dt;
       this.frameAcc = 0;
@@ -830,9 +807,9 @@ class Crawler {
   takeDamage(dmg, dir) {
     if (this.dead) return;
     this.hp -= dmg; this.stunT = 0.25;
-    SFAudio.houndYelp?.();
     if (this.state === 'idle') { this.state = 'chase'; creatureScare(this, 0.7); }
-    if (this.hp <= 0) { this.dead = true; this.state = 'dead'; this.deathT = 0; SFAudio.screech?.(0.4); }
+    if (this.hp <= 0) { this.dead = true; this.state = 'dead'; this.deathT = 0; SFAudio.creatureDie('crawler'); }
+    else SFAudio.creatureHit('crawler');
   }
 
   update(dt, player) {
@@ -844,9 +821,8 @@ class Crawler {
     }
     if (this.stunT > 0) { this.stunT -= dt; this.draw(); return; }
     const px = player.x, dx = px - this.x, dist = Math.abs(dx);
-    /* titreşim duyusu — ışığın önemi yok */
-    const moving = Math.abs(player.vx ?? 0) > 0.3;
-    const sense = player.noisy ? 520 : (moving && !player.crouching ? 210 : 70);
+    /* titreşim duyusu — ışığın önemi yok (bkz. CREATURE_SENSES) */
+    const sense = creatureSense(this, player);
     switch (this.state) {
       case 'idle':
         this.vx = Math.sin(this.t * 0.6) * 14;
@@ -1004,7 +980,7 @@ class Wraith {
     if (lit) {
       this.litT += dt;
       if (this.litT > 0.05 && !this._shriek) { this._shriek = true; SFAudio.screech?.(0.35); }
-      if (this.litT > 2.4) { this.dead = true; this.state = 'dead'; SFAudio.lurkerWhisper?.(); this.scene.cameras.main.shake(200, 0.004); }
+      if (this.litT > 2.4) { this.dead = true; this.state = 'dead'; SFAudio.creatureDie('wraith'); this.scene.cameras.main.shake(200, 0.004); }
     } else { this.litT = Math.max(0, this.litT - dt * 0.6); this._shriek = false; }
 
     switch (this.state) {
@@ -1109,11 +1085,11 @@ class Brute {
     if (this.dead) return;
     this.hp -= dmg * (this.state === 'stun' ? 2 : 1);   // sersemken savunmasız
     this.rig.hurtT = 0.3;
-    SFAudio.monsterRoar(false);
     if (this.state === 'wander') { this.state = 'alert'; this.alertT = 0; }
+    if (this.hp > 0) SFAudio.creatureHit('brute');
     if (this.hp <= 0) {
       this.dead = true; this.state = 'dead';
-      SFAudio.screech?.(0.6); this.scene.cameras.main.shake(500, 0.012);
+      SFAudio.creatureDie('brute'); this.scene.cameras.main.shake(500, 0.012);
       this.rig.startRagdoll(dir * 160, -100, () => this.groundY);
       this.eyeGfx.clear();
     }
@@ -1122,8 +1098,7 @@ class Brute {
     this.t += dt;
     if (this.dead) { this.rig.update(dt, { x: this.x, y: this.groundY - this.rig.A.standH, mode: 'ragdoll', groundY: this.groundY }); return; }
     const px = player.x, dx = px - this.x, dist = Math.abs(dx);
-    const vf = visFactor(this.scene, px, player.y);
-    const sense = 360 * vf + (player.noisy ? 140 : 0) - (player.crouching ? 60 : 0);
+    const sense = creatureSense(this, player);
     let pose = null;
     switch (this.state) {
       case 'wander':
@@ -1144,7 +1119,7 @@ class Brute {
         const before = this.x;
         if (Math.abs(px - this.x) < 46 * this.s && Math.abs(player.y - (this.groundY - 40)) < 100) { this.onStrike?.(2); this.state = 'chase'; }
         /* bölgenin ucuna (duvar / kenar) tosladı → sersem */
-        if ((this.facing > 0 && before >= this.terr[1] - 4) || (this.facing < 0 && before <= this.terr[0] + 4)) {
+        if (this.blocked || (this.noNav && ((this.facing > 0 && before >= this.terr[1] - 4) || (this.facing < 0 && before <= this.terr[0] + 4)))) {
           this.state = 'stun'; this.stunT = 1.8; SFAudio.thud(1); this.scene.cameras.main.shake(300, 0.01);
         } else if (this.chargeT > 1.4) this.state = 'chase';
         break;
@@ -1204,6 +1179,10 @@ function spawnCreature(scene, cfg) {
     case 'crawler': return new Crawler(scene, cfg);
     case 'wraith': return new Wraith(scene, cfg);
     case 'brute': return new Brute(scene, cfg);
+    case 'watcher': return new Watcher(scene, cfg);
+    case 'swarm': return new Swarm(scene, cfg);
+    case 'tracker': return new Tracker(scene, cfg);
+    case 'mimic': return new Mimic(scene, cfg);
     default: return new Stalker(scene, cfg);
   }
 }
@@ -1218,7 +1197,7 @@ function spawnCreature(scene, cfg) {
 class Soldier {
   /**
    * cfg: { x, groundY, patrolMinX, patrolMaxX, facing, scale, depth,
-   *        static, hp, hasCarKey, tough }
+   *        static, hp, tough }
    */
   constructor(scene, cfg) {
     this.scene = scene;
@@ -1230,8 +1209,6 @@ class Soldier {
     this.s = cfg.scale ?? 1;
     this.facing = cfg.facing ?? 1;
     this.rig = new SoldierRig(scene, { scale: this.s, depth: cfg.depth ?? 98, color: 0x0a0b0e });
-    this.rig.hasCarKey = !!cfg.hasCarKey;
-    this.hasCarKey = !!cfg.hasCarKey;
     this.lightGfx = scene.add.graphics().setDepth((cfg.depth ?? 98) - 2);
 
     this.vx = 0;

@@ -3,7 +3,8 @@
    Her 2-4 bölümde bir farklı oynanış gelir:
    tutorial · fire (yangından kaçış) · flood (su baskını) ·
    colossus (8 kollu devden kaçış) · boat / car (araçla kaçış) ·
-   shop / factory (içeri girip çıkmak için akıl oyunu) · bomb (süreli kapı).
+   shop / factory (içeri girip çıkmak için akıl oyunu) · bomb (süreli kapı) ·
+   elevator / train / echo (asansör, tren, karanlıkta yankı — bkz. escapes.js).
    Bu dosya hem bölüm yerleşimini (levelgen çağırır) hem de
    çalışma anı mantığını (GameScene çağırır) içerir.
    ============================================================ */
@@ -11,20 +12,21 @@
 
 const MISSIONS = {
   1: 'tutorial', 4: 'house', 6: 'fire',
-  12: 'shop', 15: 'car', 18: 'factory',
+  12: 'shop', 14: 'train', 15: 'car', 18: 'factory',
   23: 'boat', 26: 'colossus', 28: 'shop',
-  33: 'flood', 36: 'fire', 38: 'factory',
-  43: 'flood', 47: 'fire',
-  52: 'boat', 55: 'car', 58: 'colossus',
+  33: 'flood', 34: 'elevator', 36: 'fire', 37: 'echo', 38: 'factory',
+  42: 'elevator', 43: 'flood', 47: 'fire', 49: 'elevator',
+  52: 'boat', 53: 'train', 55: 'car', 58: 'colossus',
   62: 'shop', 66: 'car', 67: 'fire', 68: 'flood',
-  72: 'factory', 75: 'flood', 77: 'car',
-  83: 'fire', 85: 'colossus', 87: 'bomb',
-  92: 'boat', 94: 'colossus',
+  71: 'train', 72: 'factory', 75: 'flood', 77: 'car', 79: 'elevator',
+  83: 'fire', 84: 'echo', 85: 'colossus', 87: 'bomb',
+  92: 'boat', 94: 'colossus', 98: 'echo',
 };
 const MISSION_TITLES = {
   tutorial: 'YARIĞIN DİBİ', house: 'KİLİTLİ EV', fire: 'YANGIN', flood: 'SU BASKINI',
   colossus: 'SEKİZ KOL', boat: 'NEHİR KAÇIŞI', car: 'YOL KAÇIŞI', shop: 'KAPALI DÜKKÂN',
   factory: 'MAKİNE DAİRESİ', bomb: 'SAAT İŞLİYOR',
+  elevator: 'ASANSÖR BOŞLUĞU', train: 'SON TREN', echo: 'KÖR DEHLİZ',
 };
 
 /* ============================================================
@@ -38,6 +40,9 @@ function buildMissionLevel(kind, H) {
   const gy0 = H.getGy();
   switch (kind) {
     case 'bomb': buildBombLevel(L, C, rng, H.getX, H.setX, H.getGy); return;
+    case 'elevator':
+    case 'train':
+    case 'echo': buildEscapeLevel(kind, H); return;
 
     case 'tutorial': {
       /* ÖĞRETİCİ — her istasyon bir şey öğretir, sonunda gerçek aksiyon */
@@ -54,13 +59,10 @@ function buildMissionLevel(kind, H) {
       L.platforms.push({ x: x + 60, y: gy0 - 236, w: 170, thick: 190, material: 'wood', look: 'branch' });
       L.tutorial.push({ x: x - 120, key: 'crouch' });
       C.flat(420);
-      // levye + kutu
+      // terk edilmiş çanta — eşya almayı öğretir (levye 3. bölümde bir arabanın bagajında)
       x = H.getX();
-      L.looseItems.push({ kind: 'crowbar', x: x + 60, y: gy0 - 30 });
+      H.stash('backpack', x + 80, gy0, ['battery', 'bandage']);
       L.tutorial.push({ x: x - 100, key: 'act' });
-      L.crates.push({ x: x + 280, groundY: gy0, contents: ['battery'], needsCrowbar: true, fixed: true });
-      H.stash('backpack', x + 400, gy0, ['bandage']);
-      L.tutorial.push({ x: x + 160, key: 'pry' });
       C.flat(440);
       // itilecek kutu — yükseltiye tırman
       L.tutorial.push({ x: H.getX() - 40, key: 'push' });
@@ -313,6 +315,7 @@ const Missions = {
     if (ch.vehicle) M.vehicle = new Vehicle(sc, ch.vehicle);
     if (ch.bomb) this._setupBomb(sc, ch);
     if (ch.tutorial) M.tutorial = { steps: ch.tutorial.map(s => ({ ...s, done: false })), cur: null, holdT: 0 };
+    Escapes.setup(sc);
   },
 
   /* ---------------- ÇÖKEN KÖPRÜ ---------------- */
@@ -381,7 +384,7 @@ const Missions = {
           hp: C.type === 'hound' ? 4 : 7, chaseSpeed: 206 - i * 8,
         });
         cr.onStrike = (dmg) => sc.damagePlayer(dmg ?? 2, 1);
-        cr.chaser = true;
+        cr.chaser = true; cr.noNav = true;            // kurgulu kovalama: uçurumu atlayamaz
         sc.creatures.push(cr); C.crs.push(cr);
       }
       sc.scare(px - 400, 1.1);
@@ -549,7 +552,7 @@ const Missions = {
       sc.tweens.add({ targets: fx.flash, alpha: 0, duration: 700 });
     }
     sc.cameras.main.shake(600, 0.012);
-    try { navigator.vibrate?.([80, 30, 160]); } catch (e) {}
+    SFVibrate([80, 30, 160]);
     if (target.cell >= 0) this._igniteCell(f, target.cell);
     f.snd = SFAudio.fireLoop?.();
   },
@@ -979,7 +982,7 @@ const Missions = {
       case 'move': if (Math.abs(P.body.velocity.x) > 1) T.holdT += dt; ok = T.holdT > 0.7; break;
       case 'jump': ok = !P.grounded && P.body.velocity.y < -4; break;
       case 'crouch': ok = P.crouching || (P.slideT ?? 0) > 0; break;
-      case 'act': ok = sc.inv.crowbar; break;
+      case 'act': ok = sc.containers.some(c => c.opened) || sc.inv.crowbar; break;
       case 'pry': ok = sc.crates.some(c => c.opened); break;
       case 'push': ok = !!P.pushing || !!P.grabbing; break;
       case 'flash': ok = sc.flashOn; break;
@@ -1002,12 +1005,15 @@ const Missions = {
     this._updateColossus(sc, dt, P);
     this._updateBomb(sc, dt);
     this._updateTutorial(sc, dt, P);
+    Escapes.update(sc, dt, P);
     if (M.slam && !M.slam.done && !sc.mis.flood && P.body.position.x > M.slam.x + 120) this._slam(sc);
   },
 
   /* ---------------- etkileşim ---------------- */
   findInteractable(sc, px, py) {
     const M = sc.mis; if (!M) return null;
+    const et = Escapes.findInteractable(sc, px, py);
+    if (et) return et;
     const V = M.vehicle;
     if (V && !V.started && Math.abs(V.x - px) < 120) return { type: 'm-vehicle', obj: V, label: V.kind === 'boat' ? 'TEKNEYE BİN' : 'ARABAYA BİN', x: V.x, y: V.y - 80 };
     for (const f of M.fuseBoxes) {
@@ -1041,6 +1047,7 @@ const Missions = {
 
   interact(sc, t) {
     const M = sc.mis;
+    if (Escapes.interact(sc, t)) return true;
     switch (t.type) {
       case 'm-vehicle': t.obj.board(); return true;
       case 'm-fuse': {
@@ -1060,7 +1067,7 @@ const Missions = {
         return true;
       }
       case 'm-fuse-no': SFAudio.thud(0.2); UI.hint('Sigorta yuvası boş.', 2000, '⚡'); return true;
-      case 'm-note': t.obj.read = true; t.obj.g.destroy(); t.obj.glow.destroy(); this.revealDigit(sc, t.obj.lock, t.obj.idx); return true;
+      case 'm-note': sc.markFound('n' + t.obj.lock + ':' + t.obj.idx); t.obj.read = true; t.obj.g.destroy(); t.obj.glow.destroy(); this.revealDigit(sc, t.obj.lock, t.obj.idx); return true;
       case 'm-keypad': UI.openKeypad(sc, t.obj); return true;
       case 'm-simon-start': this._simonPlay(sc, t.obj); return true;
       case 'm-simon': {

@@ -183,11 +183,11 @@ class HumanRig {
 
   /* ============ EYLEM SİSTEMİ ============ */
   /**
-   * names: pickup | batterySwap | reload | bandage | lever | pickpocket | insert
+   * names: pickup | batterySwap | reload | bandage | lever | insert
    * opts: { targetX, targetY, onPhase(name), onDone() }
    */
   startAction(name, opts = {}) {
-    const durs = { pickup: 1.05, batterySwap: 2.4, reload: 2.0, bandage: 2.6, lever: 1.15, pickpocket: 1.6, insert: 1.4 };
+    const durs = { pickup: 1.05, batterySwap: 2.4, reload: 2.0, bandage: 2.6, lever: 1.15, insert: 1.4 };
     this.action = {
       name, t: 0, dur: opts.dur ?? durs[name] ?? 1,
       targetX: opts.targetX, targetY: opts.targetY,
@@ -312,7 +312,6 @@ class HumanRig {
         case 'bandage':
           this._phase(act, 'wrapStart', 0.18); this._phase(act, 'healed', 0.92); break;
         case 'lever': this._phase(act, 'pulled', 0.68); break;
-        case 'pickpocket': this._phase(act, 'steal', 0.72); break;
         case 'insert': this._phase(act, 'inserted', 0.6); break;
       }
       if (act.t >= 1) {
@@ -925,16 +924,6 @@ class HumanRig {
         const lx = act.targetX ?? (px + f * 26), ly0 = (act.targetY ?? gY - 70) - 18;
         handLT = { x: lx - f * 3, y: ly0 + pull * 34 };
         handRT = { x: lx + f * 2, y: ly0 + pull * 34 + 3 };
-        break;
-      }
-      case 'pickpocket': {
-        // çömelik, tek el yavaşça hedefe süzülür
-        dip = 0.5;
-        lean = f * 0.4;
-        const tx = act.targetX ?? (px + f * 40), ty = act.targetY ?? (gY - 40);
-        const k = smooth(clamp(t / 0.7, 0, 1)) * (t > 0.8 ? smooth((1 - t) / 0.2) : 1);
-        handRT = { x: lerp(px + f * 10, tx, k), y: lerp(gY - 36 * this.s, ty, k) };
-        handLT = { x: px - f * 2, y: gY - 30 * this.s };
         break;
       }
       case 'insert': {
@@ -1708,7 +1697,6 @@ class SoldierRig extends HumanRig {
     this.aimAngle = 0;
     this.ready = 0;            // 0 alçak hazır .. 1 nişan
     this.readyTarget = 0;
-    this.hasCarKey = false;    // bilekte araba anahtarı — yankesicilik hedefi
     this.muzzle = null;        // { x, y, angle } — taktik fener / mermi çıkışı
   }
   draw() {
@@ -1743,12 +1731,6 @@ class SoldierRig extends HumanRig {
     this.render(J, 0);
     this._noBlend = false;
     this.drawRifle(at, ang);
-    if (this.hasCarKey) {
-      const g = this.gfx, h = J.handR;
-      const t = this.scene.time.now * 0.004;
-      g.fillStyle(0xd8d2b8, 0.5 + Math.sin(t) * 0.3);
-      g.fillCircle(h.x - f * 3 * s, h.y + 3 * s, 2);
-    }
   }
   drawRifle(at, ang) {
     const g = this.gfx, col = this.color, s = this.s;

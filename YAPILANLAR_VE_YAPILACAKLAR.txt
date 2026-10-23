@@ -1,9 +1,229 @@
 ================================================================
- SHADOW FALL — v6.0 GELİŞTİRME NOTU
- Yapılanlar ve yapılacaklar · 12 Ekim 2026
+ SHADOW FALL — v1.1.0 GELİŞTİRME NOTU
+ Yapılanlar ve yapılacaklar · 16 Ekim 2026
  (Ayrıntılı oyun dokümanı: OYUN_NOTLARI.txt)
 ================================================================
 
+
+KALDIĞIMIZ YER — 16 Ekim 2026 akşamı
+----------------------------------------------------------------
+!! DOĞRU OYUNU AÇ: Boss gördüysen eski yedeği açıyorsun
+   (~/ShadowFall_yedek_v5 — v5, boss'lu). Güncel oyun bu klasörde.
+   Çalıştır:  cd ~/Documents/Projeler/Shadow-Fall && npm run serve
+   Aç:        http://localhost:8765/?unlockall
+   Ana menünün altında "SHADOW FALL · v1.1.0" yazmalı.
+
+Son yapılanlar (bu oturumun sonu):
+  • Zıplama düzeltildi: yürürken uçurum kenarında durunca oradan
+    zıplayınca boşluğa düşüyordun (yalnız 98 px gidiyordu). Artık yön
+    basılıyken zıplayınca ileri atılıyorsun, havada hız korunuyor.
+  • Çukura / dikene düşmek anında ölüm değil: 1 can gider, son sağlam
+    zemine geri konursun. Son canınsa ölürsün. İnişte can gitmez.
+  • Levye 3. bölümde terk edilmiş arabanın BAGAJINDA; hemen ardından
+    ilk çivili sandık. 1–2. bölümlerde levye gerektiren hiçbir şey yok.
+  • Altyazı / konuşma tamamen kaldırıldı (final konuşmaları, giriş
+    sonundaki başlık kartı, jenerik anlatımı).
+  • İpucu kartları yazısız: yalnız sembol (+ klavyede tuş harfi).
+
+SIRADA (yapılacaklar):
+  [ ] Oyunu GÜNCEL klasörden aç ve dene (yukarıdaki adım).
+  [ ] Eşya / kapı üstünde çıkan etiketler ("BAGAJI AÇ", "KOLU ÇEK"...)
+      hâlâ yazılı. Bunlar da sembole dönsün mü? Karar ver.
+  [ ] Çukura düşünce 1 can gitmesi uygun mu, yoksa hiç can gitmesin mi?
+      Karar ver (kod: js/main.js → fallBack).
+  [ ] .aab yeniden derlenmedi — son değişiklikler (zıplama, levye,
+      yazısız kartlar, yeni yaratıklar, uzun bölümler) pakette YOK.
+      Derlemek için: npm run android:sync, sonra
+      cd android && ./gradlew bundleRelease
+        -Pandroid.aapt2FromMavenOverride=$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2
+      (JAVA_HOME = Android Studio jbr; ayrıntı docs/PLAY_STORE.md)
+  [ ] Testler: 30 testten 29'u geçiyor. "creatureLeap" testi ara sıra
+      düşüyor (Koca'nın zamanlaması rastgele) — testi sabitlemek gerek,
+      oyunda hata değil.
+  [ ] Değişiklikler GİT'E İŞLENMEDİ (commit yok). Onaylayınca commit +
+      push yapılacak.
+  [ ] Telefonda denemek için debug APK derlenip USB ile kurulabilir.
+  [ ] Bölüm süresi (hedef ≥10 dk) gerçek oynanışla ölçülmeli; kısa / uzun
+      gelirse levelgen.js → targetW ve nPz ayarlanır.
+  [ ] Aşağıdaki "YAPILACAKLAR" listesindeki senin yapacakların
+      (Play Console, gizlilik sayfası, anahtar yedeği, telefonda test).
+
+
+v1.1.0 — YAPILANLAR
+----------------------------------------------------------------
+
+1) Bölüm kilidi geri geldi
+     • Mağaza sürümünde tüm bölümler açıktı. Artık yalnız bitirdiğin
+       bölümün bir sonrası açılıyor (yeni oyunda yalnız 1. bölüm).
+     • Geliştirirken hepsini açmak için adrese ?unlockall ekle.
+
+2) Ayarlar
+     • DOKUNMA HASSASİYETİ (%50–150): kaydırma, fırlatma ve koşu
+       eşikleri buna göre ölçekleniyor.
+     • TİTREŞİM açık/kapalı. Titreşim artık hasar alınca ve ölünce de
+       veriliyor; kapalıyken hiç titreşmiyor.
+     • Ayarlar kaydediliyor (eskiden her açılışta sıfırlanıyordu).
+
+3) Bölüm sonu özeti
+     • Bölüm bitince: süre, ölüm sayısı, bulunan eşya (bulunan / toplam).
+       Taş, teneke gibi çöpler sayılmaz. Kontrol noktasından dönünce
+       sayaç sıfırlanmaz. DEVAM / ANA MENÜ.
+
+4) Kontrol noktaları görünür
+     • Her kontrol noktasında küçük bir taş fener: sönükken kor gibi,
+       geçince fitil tutuşur, kısa bir ses çıkar ve ışık kalır.
+     • Boşluğun üstüne düşen kontrol noktası artık seçilmiyor.
+
+5) Yeni görev türleri (js/escapes.js)
+     • ASANSÖR BOŞLUĞU (34, 49, 79): jeneratöre pil tak, kafese bin,
+       kolu çek. Makine sesi arkadan yaratıkları getirir; yukarıdan taş
+       düşer (önce toz süzülür). Yarı yolda kablo boşalır, tepede kopmak
+       üzeredir — kafes düşmeden üst kata çık.
+     • SON TREN (14, 53, 71): yol uçurumda biter. Vagona çıkınca tren
+       kalkar; damdayken alçak kirişlerde eğil. Köprü yıkık: damdan üst
+       geçide atla, kenarı yakala. Vagon oyuncuyu taşır, zıplayınca
+       trenin hızı korunur.
+     • KÖR DEHLİZ (37, 84, 98): fener söner. Karaktere dokun / [F]:
+       yere vur, yankı halkası yolu bir an gösterir. Eğilerek vurursan
+       sessiz ama dar; yüksek vuruş Kör Sürüngenleri uyandırır. En yakın
+       boşluktan damla sesi, çıkıştan çan sesi gelir (stereo).
+
+6) Ses
+     • Perde başına ortam sesi: orman cırcır + baykuş, yol tabela
+       gıcırtısı + uzak köpek, bataklık kurbağa, maden su damlası +
+       göçük, fabrika makine uğultusu + buhar + çekiç, nehir akan su,
+       şehir ıslıklı rüzgâr, kale zincir + bayrak, kule uluyan rüzgâr,
+       geçit derin gümbürtü.
+     • Her yaratık türünün kendi vurulma ve ölüm sesi var (kök çatırtısı,
+       kitin tıkırtısı, tıslama, homurtu, ışıkta dağılma parıltısı...).
+
+7) Temizlik (~600 satır ölü kod silindi)
+     • Maria yoldaş YZ (Companion), "Maria olarak oyna" kalıntıları.
+     • Eski sürülebilir araba, yankesicilik, araba anahtarı, barikatlar.
+     • Boss bayrakları (yaratıklar, ses).
+     • Hiç çağrılmayan eski "perde skoru" müzik altyapısı (müziği zaten
+       music.js çalıyordu).
+
+8) Hata düzeltmeleri
+     • Her bölümde ekran-boyutu dinleyicisi birikiyordu; telefon
+       döndürülünce kapanmış sahneye erişip hata veriyordu.
+     • Bölüm sonundan ana menüye dönünce ekran siyah kalıyordu.
+
+9) Oynanış istekleri
+     • Atlayıp inince can gitmiyor (yüksekten inişte de). Çukura /
+       dikene düşmek hâlâ öldürür.
+     • Havadayken bir kez daha zıpla: yakında tutunacak kenar varsa
+       eller ona uzanır ve tutunur. Kenar yoksa bir şey olmaz (çift
+       zıplama yok). Bulmaca duvarları yine tutunmaya kapalı.
+     • Levye artık yerde durmuyor: öğreticide yarığa düşmüş terk
+       edilmiş bir arabanın BAGAJINDA. Levyesiz başlanan bölümde ilk
+       zorlanacak kutudan önceki bir dolaba / gardıroba / sandığa konur;
+       yoksa oraya terk edilmiş bir araba (iç mekânda dolap) yerleşir.
+       Yeni saklama yeri: araba bagajı.
+
+10) Yaratık zekâsı (js/ai.js)
+     • Görünmez duvar yok: zemin + platformlardan yüzey ağı kuruluyor.
+       Kovalarken boşluktan atlar, basamak tırmanır, platformdan iner;
+       duvara / kapalı kapıya gerçekten çarpar. Ulaşamıyorsa kenarda
+       volta atar, sonra vazgeçer.
+     • Her türün yeteneği farklı: Tazı ve İzci uzağa atlar, Gölge-insan
+       ve Sürüngen tırmanır, Koca hiç atlayamaz (hücumda kenara tosluyor).
+     • Duyular türe göre (görme ışığa bağlı, arkası dönükken görmez):
+       Kök Canavarı görür, Tazı koklar/duyar, Sürüngen yalnız titreşim,
+       Koca neredeyse sağır ama fenere saldırır, İzci ikisi birden.
+     • Ses duyunca sesin geldiği yere gidip bakar; gözden kaybedince son
+       gördüğü yeri arar (İzci 9 sn, diğerleri 4.5 sn).
+     • Zorluk: bölüm ilerledikçe algı menzili ve kovalama hızı artar.
+
+11) 4 yeni yaratık (js/creatures2.js) — toplam 10 tür
+     • GÖZCÜ (14+): sarkan koza, yalnız ışığı görür. Gözü açılmadan
+       feneri kapatırsan uyur; tam açılırsa çığlık: çevredeki herkes
+       senin yerine koşar.
+     • KEMİRGEN SÜRÜSÜ (8+): karanlıkta avlanır, koşu sesini duyar,
+       ayaklarını kemirir. Feneri üstlerine tut: dağılırlar.
+     • İZCİ (24+): görür + duyar, hızlı, boşluktan atlar, uzun arar.
+     • TAKLİTÇİ (19+): sandık kılığında; parıltısı bile aynı. Ele veren:
+       kapağı nefes alır gibi kalkar, fenerde titrer ve aralıktan kızıl
+       parlar. Yaklaşana saldırır.
+     • Yeni türler ilk göründüğü bölümlerde bir kez ipucu kartıyla
+       anlatılıyor.
+
+12) Akıl oyunları (js/thinking.js)
+     • LAMBA PANOSU: şalterler kablolarının gittiği lambaları açıp
+       kapatır; hepsini yak.
+     • AYNALAR: projektör ışınını aynaları çevirerek kızıl sensöre
+       ulaştır. Üst sıra aynalara platformdan uzanılır.
+     • TERAZİ: sandığın boyu ağırlığıdır (1-2-3). Sağ kefeyi karşıdaki
+       çentik sayısına TAM denkle.
+     • DURMUŞ SAATLER: şifre akrepler, ama duvardaki sırayla değil —
+       altlarındaki Roma rakamı sırasıyla.
+     • 30. bölümden sonra pano ve projektör çoğu zaman çalışmıyor: önce
+       pili bulup jeneratöre takmak gerekiyor.
+     • Her biri üretilirken çözülebilir olduğu doğrulanıyor; 45 sn
+       takılınca çözümü söylemeyen bir ipucu kartı çıkıyor.
+
+13) Bölümler uzadı ve zorlaştı
+     • Uzunluk: ilk bölümler ~8–9 bin px, son bölümler 15–17 bin px
+       (eskiden 4.5–7.5 bin). Tahmini süre: ilk bölümler ~10 dk, son
+       bölümler daha uzun (gerçek oynanışla doğrulanmadı).
+     • Bulmaca sayısı: 2 → 7; bunların 1–3'ü akıl oyunu. Yapı içi
+       bölümlerde de akıl oyunu odaları var.
+     • Özel görevli bölümler (yangın, tren, asansör...) görevden sonra
+       normal bölüm olarak devam ediyor (bomba hariç). Yükseltide
+       bitenlerde aşağı inen el merdiveni var.
+     • Yaratık odası ve ikinci yaratık zorlukla sıklaşıyor; Gözcü hep
+       çağırabileceği bir yaratıkla birlikte geliyor.
+     • Pil, bandaj ve şarjör bölüm uzunluğuna göre veriliyor ama geç
+       bölümlerde kıtlaşıyor; kontrol noktaları seyrekleşiyor
+       (≈900 px → ≈2300 px).
+
+14) Altyazı / konuşma tamamen kaldırıldı
+     • Final sahnesindeki Maria konuşmaları, girişin sonundaki "YARIK —
+       yarığın dibi" başlık kartı ve jenerikteki anlatım satırları
+       çıkarıldı. Sahneler sözsüz; kapanışta yalnız "— SON —".
+     • Kalan yazılar yalnız kontrol / bulmaca ipucu kartları.
+
+15) Sürüm ve testler
+     • 1.1.0 (versionCode 2). İmzalı paket:
+       release/ShadowFall-v1.1.0-release.aab (aynı yükleme anahtarı).
+     • tests/play.js 29/29 (yeni: elevator, train, echo, checkpoint,
+       summary, lock, crowbarHidden, airGrab, noFallDamage,
+       creatureLeap, investigate, watcher, swarm, mimic, thinking). tests/levels.test.js 100/100. Smoke: 101 bölüm
+       hatasız.
+
+
+YAPILACAKLAR
+----------------------------------------------------------------
+  Senin yapman gerekenler (bilgisayardan yapılamıyor):
+  [ ] docs/privacy-policy.html sayfasını www.Yazify.net'e yükle,
+      adresi Play Console'a gir.
+  [ ] Play Console'da uygulamayı oluştur, Play App Signing'i aç,
+      ShadowFall-v1.1.0-release.aab'yi "Dahili test"e yükle.
+  [ ] İmza anahtarını yedekle: ~/AndroidKeystores/ShadowFall/
+      (shadowfall-upload.jks + keystore.properties).
+  [ ] Gerçek telefonda oynanış testi (orta seviye Android, mümkünse
+      iPhone): FPS, dokunma hissi, yeni hassasiyet ayarı.
+  [ ] Oyunu birkaç kişiye oynat (bulmaca ve görev zorluğu).
+  [ ] Kökteki _yedek_test.txt ve touch_end.png'yi Finder'dan sil
+      (macOS koruması yüzünden terminalden silinemedi).
+
+  Elle oynanarak ayarlanması gerekenler:
+  [ ] Kenar sistemi: tutunma penceresi, kenarda durma mesafesi
+      (10–13 px), refleks yakalama hissi.
+  [ ] Görev dengesi: yangın hızı, dev hızı, bomba süresi, araba rampa
+      hızı, su yükselme hızı; yeni görevlerde asansör hızı (62 px/sn),
+      taş aralığı, tren hızı (270 px/sn), üst geçit yüksekliği.
+  [ ] Giriş ve uyanma sahnesinin zamanlaması (gerçek hızda izle).
+  [ ] Bölüm süreleri: hedef bölüm başına en az 10 dk. Uzunluk ve
+      bulmaca sayısı buna göre ayarlandı ama gerçek süre ancak
+      oynanarak ölçülebilir; kısa gelirse levelgen.js → targetW / nPz.
+  [ ] Yeni yaratıkların dengesi (Gözcü göz açılma süresi, sürü hızı,
+      İzci arama süresi) ve akıl oyunlarının zorluğu.
+
+
+================================================================
+ ÖNCEKİ SÜRÜM — v6.0 (12 Ekim 2026)
+================================================================
 
 YAPILANLAR
 ----------------------------------------------------------------
@@ -77,22 +297,3 @@ YAPILANLAR
 7) Diğer
      • Menüye dönüşte / bölüm değişiminde sahne kapanırken çıkan hata düzeltildi.
      • Ekran dışındaki ışıklar çizilmiyor (performans).
-
-
-YAPILACAKLAR
-----------------------------------------------------------------
-  [ ] Gerçek telefonda oynanış testi (iPhone + orta seviye Android):
-      FPS, dokunma hissi, jest eşikleri.
-  [ ] Kenar sistemi ince ayarı: tutunma penceresi, kenarda durma
-      mesafesi (şu an 10–13 px), refleks yakalama hissi.
-  [ ] Giriş ve uyanma sahnesinin zamanlamasını gerçek hızda izleyip ayarla.
-  [ ] Görev dengesi: yangın hızı, dev hızı, bomba süresi, araba rampa
-      hızı, su yükselme hızı.
-  [x] Boss bölümleri kaldırıldı (v1.0.0 — bkz. Oyunileilgili.txt).
-  [ ] Ayarlara "kontrol hassasiyeti" ve "titreşim".
-  [ ] Bölüm sonu özet ekranı (süre, ölüm sayısı, bulunan eşya).
-  [ ] Yeni görev türleri: asansör kaçışı, tren, karanlıkta sesle ilerleme.
-  [ ] Kontrol noktası işaretleri (şu an görünmez).
-  [ ] Perde başına ayrı ortam sesleri (maden damlası, fabrika makinesi).
-  [ ] Kökteki kullanılmayan eski yardımcı dosyaları temizle
-      (patch*.py, fix_*.py, temp.js, motor_engine.js, index_backup_*.html).

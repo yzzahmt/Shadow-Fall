@@ -86,7 +86,9 @@ body.cine #controls * { pointer-events:none !important; }
   opacity:0; pointer-events:none; transition:opacity 0.35s, transform 0.35s;
 }
 #hint-card.show { opacity:1; transform:translate(-50%, 0); }
-#hint-card .ico { font-size:16px; width:28px; height:28px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.08); }
+#hint-card .txt:empty { display:none; }
+#tut-card .txt { font-size:18px; letter-spacing:0.2em; }
+#hint-card .ico { font-size:20px; width:34px; height:34px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.08); }
 body.cine #hint-card { opacity:0 !important; }
 #tut-card .ico { font-size:26px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.08); animation:tutPulse 1.4s infinite; }
 #tut-card.done .ico { background:rgba(120,190,130,0.35); animation:none; }
@@ -269,7 +271,7 @@ body.cine #hint-card { opacity:0 !important; }
   transition:background 0.25s, color 0.25s;
 }
 .lv-btn:hover { background:rgba(255,255,255,0.1); color:#E8E4DC; }
-.lv-btn.locked { opacity:0.2; cursor:default; }
+.lv-btn.locked, .lv-btn.locked.mislv, .lv-btn.locked.bldlv { opacity:0.2; cursor:default; border-color:rgba(255,255,255,0.08); color:#A8A49C; }
 .lv-btn.locked:hover { background:rgba(255,255,255,0.04); color:#A8A49C; }
 .lv-btn.bldlv { border-color:rgba(200,190,160,0.4); color:#CFC5A8; }
 
@@ -287,8 +289,18 @@ body.cine #hint-card { opacity:0 !important; }
 .opt-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .opt-row label { font-size:12px; letter-spacing:0.22em; color:#A8A49C; font-weight:300; }
 .opt-row input[type=range] { width:140px; accent-color:#A8A49C; }
+.opt-toggle { width:140px; padding:6px 0; background:none; border:1px solid rgba(168,164,156,0.45); color:#E8E4DC;
+  font:inherit; font-size:12px; letter-spacing:0.22em; cursor:pointer; }
+.opt-toggle.off { color:#5A5750; border-color:rgba(90,87,80,0.45); }
 
 /* ---------- death / chapter end ---------- */
+#summary-panel { z-index:42; }
+#sum-name { font-size:11px; letter-spacing:0.3em; color:#7A766E; margin-bottom:30px; }
+#sum-stats { display:flex; gap:clamp(22px,7vw,64px); margin-bottom:34px; }
+.sum-stat { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.sum-stat .v { font-family:'Cormorant Garamond',serif; font-size:clamp(26px,6vw,40px); color:#E8E4DC; }
+.sum-stat .k { font-size:10px; letter-spacing:0.28em; color:#7A766E; }
+@media (max-height:420px) { #sum-name { margin-bottom:14px; } #sum-stats { margin-bottom:16px; } }
 #death-text {
   font-family:'Cormorant Garamond',serif; font-style:italic; font-size:clamp(18px,4.4vw,26px);
   color:#7A766E; margin-bottom:34px; letter-spacing:0.1em;
@@ -343,11 +355,6 @@ body.cine #hint-card { opacity:0 !important; }
     <div class="inv-slot" id="inv-key" title="Anahtar">
       <svg viewBox="0 0 24 24" fill="none" stroke="#C9C5BE" stroke-width="1.6" stroke-linecap="round">
         <circle cx="8" cy="8" r="3.4"/><path d="M10.5 10.5 L19 19 M16 16 l2.6 -2.6 M13.4 13.4 l2 -2"/>
-      </svg>
-    </div>
-    <div class="inv-slot" id="inv-carkey" title="Araba Anahtarı">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#C9C5BE" stroke-width="1.6" stroke-linecap="round">
-        <circle cx="12" cy="8" r="4"/><path d="M12 12 v8 M12 17 h3 M12 20 h2"/>
       </svg>
     </div>
     <div class="hud-chip" id="cnt-bandage" title="Bandaj">
@@ -428,7 +435,7 @@ body.cine #hint-card { opacity:0 !important; }
       <button class="text-btn dim" id="m-privacy">GİZLİLİK</button>
     </div>
   </div>
-  <div class="version">SHADOW FALL · v1.0.0 · 100 BÖLÜM</div>
+  <div class="version">SHADOW FALL · v1.1.0 · 100 BÖLÜM</div>
 </div>
 
 <!-- chapter select -->
@@ -445,6 +452,8 @@ body.cine #hint-card { opacity:0 !important; }
     <div class="opt-row"><label>SES</label><input type="range" id="opt-vol" min="0" max="100" value="80"></div>
     <div class="opt-row"><label>MÜZİK</label><input type="range" id="opt-music" min="0" max="100" value="70"></div>
     <div class="opt-row"><label>FİLM GRENİ</label><input type="range" id="opt-grain" min="0" max="100" value="55"></div>
+    <div class="opt-row"><label>DOKUNMA HASSASİYETİ</label><input type="range" id="opt-sens" min="50" max="150" value="100"></div>
+    <div class="opt-row"><label>TİTREŞİM</label><button class="opt-toggle" id="opt-vibe">AÇIK</button></div>
   </div>
   <button class="text-btn dim" id="opt-back">GERİ</button>
 </div>
@@ -469,6 +478,19 @@ body.cine #hint-card { opacity:0 !important; }
   <button class="text-btn" id="p-resume">DEVAM</button>
   <button class="text-btn" id="p-restart">YENİDEN BAŞLA</button>
   <button class="text-btn dim" id="p-menu">ANA MENÜ</button>
+</div>
+
+<!-- bölüm sonu özeti -->
+<div class="overlay" id="summary-panel">
+  <div id="sum-title" class="panel-title" style="margin-bottom:6px">BÖLÜM</div>
+  <div id="sum-name"></div>
+  <div id="sum-stats">
+    <div class="sum-stat"><span class="v" id="sum-time">00:00</span><span class="k">SÜRE</span></div>
+    <div class="sum-stat"><span class="v" id="sum-deaths">0</span><span class="k">ÖLÜM</span></div>
+    <div class="sum-stat"><span class="v" id="sum-found">0</span><span class="k">BULUNAN EŞYA</span></div>
+  </div>
+  <button class="text-btn" id="sum-next">DEVAM</button>
+  <button class="text-btn dim" id="sum-menu">ANA MENÜ</button>
 </div>
 
 <!-- death -->
@@ -502,11 +524,15 @@ body.cine #hint-card { opacity:0 !important; }
 <script src="js/physics.js"></script>
 <script src="js/items.js"></script>
 <script src="js/creatures.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/creatures2.js"></script>
 <script src="js/story.js"></script>
 <script src="js/puzzles.js"></script>
+<script src="js/thinking.js"></script>
 <script src="js/buildings.js"></script>
 <script src="js/levelgen.js"></script>
 <script src="js/missions.js"></script>
+<script src="js/escapes.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

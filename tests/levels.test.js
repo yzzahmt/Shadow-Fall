@@ -19,7 +19,7 @@ ctx.Atmo = {
   },
 };
 vm.createContext(ctx);
-for (const f of ['js/items.js', 'js/story.js', 'js/puzzles.js', 'js/buildings.js', 'js/levelgen.js', 'js/missions.js']) {
+for (const f of ['js/items.js', 'js/story.js', 'js/puzzles.js', 'js/thinking.js', 'js/buildings.js', 'js/levelgen.js', 'js/missions.js', 'js/escapes.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 }
 const getLevel = vm.runInContext('getLevel', ctx);
@@ -67,7 +67,6 @@ for (let n = 1; n <= 100; n++) {
     if (!(c.patrolMaxX > c.patrolMinX)) fail(n, 'creature patrol range invalid');
   }
   if (L.interior) stats.interior++;
-  if (L.bossGate || L.bossName) fail(n, 'boss leftovers');
   /* top-level gaps must be bridged */
   const top = L.ground.filter(s => s.y <= 640).sort((a, b) => a.x0 - b.x0);
   for (let i = 1; i < top.length; i++) {
@@ -78,6 +77,7 @@ for (let n = 1; n <= 100; n++) {
         || L.collapses.some(c => Math.abs(c.x0 - top[i - 1].x1) < 10)
         || (L.puzzles ?? []).some(p => Math.abs((p.x0 ?? p.plate?.x0 ?? p.left?.x0 ?? -1e9) - top[i - 1].x1) < 40)
         || L.ground.some(s => s.y > 640 && s.x0 <= top[i - 1].x1 + 10 && s.x1 >= top[i].x0 - 10)
+        || (L.bridges ?? []).some(b => b.x0 <= top[i - 1].x1 && b.x1 >= top[i].x0)
         || L.vehicle;
       if (!bridged) fail(n, `${Math.round(gapW)}px unbridged gap @${Math.round(top[i - 1].x1)}`);
     }

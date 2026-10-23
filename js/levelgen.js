@@ -24,7 +24,7 @@ const ACTS = [null,
       { type: 'trees', color: 0x16171c, sf: 0.48, yOff: 22, hs: 1.1, alpha: 1 },
     ],
     chunks: ['flat', 'gap', 'spikes', 'creature', 'stash', 'flat', 'house'],
-    creatures: ['stalker', 'crawler', 'hound'], decor: ['deadTree', 'bush', 'rock', 'wagon'],
+    creatures: ['stalker', 'crawler', 'hound', 'swarm'], decor: ['deadTree', 'bush', 'rock', 'wagon'],
   },
   { // 2 KÜL YOLU
     biome: 'road', setPieces: ['ambush', 'chase'], material: 'concrete', rain: 0.6, wind: 0.6, dark: 0,
@@ -36,7 +36,7 @@ const ACTS = [null,
       { type: 'factory', color: 0x101116, sf: 0.5, yOff: 24, hs: 0.9, alpha: 1 },
     ],
     chunks: ['flat', 'soldierPost', 'gap', 'crates', 'shop', 'spikes', 'stash', 'house'],
-    creatures: ['hound', 'brute', 'crawler'], decor: ['lamp', 'barrier', 'sign', 'rubble'],
+    creatures: ['hound', 'brute', 'crawler', 'watcher', 'mimic'], decor: ['lamp', 'barrier', 'sign', 'rubble'],
   },
   { // 3 BATAKLIK
     biome: 'swamp', setPieces: ['chase', 'collapse'], material: 'earth', rain: 1, wind: 0.5, dark: 0.25,
@@ -47,14 +47,14 @@ const ACTS = [null,
       { type: 'trees', color: 0x0e1110, sf: 0.52, yOff: 24, hs: 1.15, alpha: 1 },
     ],
     chunks: ['flat', 'pond', 'creature', 'gap', 'pond', 'stash', 'spikes'],
-    creatures: ['crawler', 'stalker', 'wraith', 'hound'], decor: ['deadTree', 'reed', 'boat', 'rock'],
+    creatures: ['crawler', 'stalker', 'wraith', 'hound', 'swarm', 'watcher', 'tracker'], decor: ['deadTree', 'reed', 'boat', 'rock'],
   },
   { // 4 MADEN
     biome: 'mine', setPieces: ['collapse', 'chase'], material: 'concrete', rain: 0, wind: 0.2, dark: 0.95, interiorish: true,
     palette: { sky0: 0x17181d, sky1: 0x060608, far: 0x101115, mid: 0x0c0d10, near: 0x07080a },
     parallax: [{ type: 'hills', color: 0x101115, sf: 0.06, yOff: 0, hs: 0.5, alpha: 0.7 }],
     chunks: ['flat', 'creature', 'crates', 'genDoor', 'spikes', 'stash', 'creature'],
-    creatures: ['crawler', 'lurker', 'wraith', 'brute'], decor: ['pipe', 'rock', 'rubble', 'cage'],
+    creatures: ['crawler', 'lurker', 'wraith', 'brute', 'swarm', 'watcher', 'tracker'], decor: ['pipe', 'rock', 'rubble', 'cage'],
   },
   { // 5 FABRİKA
     biome: 'factory', setPieces: ['ambush', 'collapse'], material: 'metal', rain: 0, wind: 0.3, dark: 0.5, blackouts: true,
@@ -64,7 +64,7 @@ const ACTS = [null,
       { type: 'factory', color: 0x0e0f12, sf: 0.4, yOff: 18, hs: 1.1, alpha: 1 },
     ],
     chunks: ['flat', 'sentryGate', 'factoryLock', 'crates', 'soldierPost', 'spikes', 'stash'],
-    creatures: ['brute', 'lurker', 'hound', 'crawler'], decor: ['pipe', 'gear', 'barrier', 'rubble'],
+    creatures: ['brute', 'lurker', 'hound', 'crawler', 'mimic', 'tracker', 'watcher'], decor: ['pipe', 'gear', 'barrier', 'rubble'],
   },
   { // 6 NEHİR
     biome: 'river', setPieces: ['chase', 'ambush'], material: 'earth', rain: 1, wind: 0.7, dark: 0.2,
@@ -74,7 +74,7 @@ const ACTS = [null,
       { type: 'trees', color: 0x12141a, sf: 0.34, yOff: 16, hs: 0.95, alpha: 1 },
     ],
     chunks: ['flat', 'pond', 'soldierPost', 'pond', 'creature', 'gap', 'stash'],
-    creatures: ['hound', 'wraith', 'stalker', 'crawler'], decor: ['reed', 'boat', 'deadTree', 'rock'],
+    creatures: ['hound', 'wraith', 'stalker', 'crawler', 'swarm', 'tracker'], decor: ['reed', 'boat', 'deadTree', 'rock'],
   },
   { // 7 ÖLÜ ŞEHİR
     biome: 'city', setPieces: ['ambush', 'chase'], material: 'concrete', rain: 0.3, wind: 0.8, dark: 0.35, blackouts: true,
@@ -84,7 +84,7 @@ const ACTS = [null,
       { type: 'ruins', color: 0x121216, sf: 0.36, yOff: 14, hs: 0.9, alpha: 1 },
     ],
     chunks: ['flat', 'house', 'sentryGate', 'creature', 'shop', 'gap', 'stash'],
-    creatures: ['lurker', 'brute', 'wraith', 'hound'], decor: ['lamp', 'rubble', 'barrier', 'sign', 'statue'],
+    creatures: ['lurker', 'brute', 'wraith', 'hound', 'mimic', 'watcher', 'tracker', 'swarm'], decor: ['lamp', 'rubble', 'barrier', 'sign', 'statue'],
   },
   { // 8 KALE
     biome: 'fortress', setPieces: ['ambush', 'collapse'], material: 'concrete', rain: 0.2, wind: 0.4, dark: 0.45, blackouts: true,
@@ -94,7 +94,7 @@ const ACTS = [null,
       { type: 'ruins', color: 0x0e0f13, sf: 0.32, yOff: 10, hs: 1.0, alpha: 1 },
     ],
     chunks: ['flat', 'sentryGate', 'factoryLock', 'soldierPost', 'house', 'crates', 'stash'],
-    creatures: ['brute', 'lurker', 'crawler', 'wraith'], decor: ['barrier', 'lamp', 'statue', 'cage'],
+    creatures: ['brute', 'lurker', 'crawler', 'wraith', 'watcher', 'mimic', 'tracker'], decor: ['barrier', 'lamp', 'statue', 'cage'],
   },
   { // 9 SİS KULESİ
     biome: 'spire', setPieces: ['collapse', 'ambush'], material: 'wood', rain: 0, wind: 0.5, dark: 0.55, blackouts: true,
@@ -104,7 +104,7 @@ const ACTS = [null,
       { type: 'ruins', color: 0x101117, sf: 0.3, yOff: 4, hs: 1.2, alpha: 1 },
     ],
     chunks: ['flat', 'creature', 'crates', 'spikes', 'stash', 'creature'],
-    creatures: ['wraith', 'lurker', 'stalker', 'crawler'], decor: ['lampInt2', 'statue', 'rubble', 'cage'],
+    creatures: ['wraith', 'lurker', 'stalker', 'crawler', 'watcher', 'tracker', 'mimic', 'swarm'], decor: ['lampInt2', 'statue', 'rubble', 'cage'],
   },
   { // 10 GEÇİT
     biome: 'gate', setPieces: ['ambush', 'chase', 'collapse'], material: 'concrete', rain: 0, wind: 0.6, dark: 0.5,
@@ -114,7 +114,7 @@ const ACTS = [null,
       { type: 'ruins', color: 0x140f17, sf: 0.28, yOff: 6, hs: 1.1, alpha: 1 },
     ],
     chunks: ['flat', 'soldierPost', 'creature', 'spikes', 'stash', 'creature', 'soldierPost'],
-    creatures: ['stalker', 'hound', 'lurker', 'crawler', 'wraith', 'brute'], decor: ['statue', 'grave', 'rubble'],
+    creatures: ['stalker', 'hound', 'lurker', 'crawler', 'wraith', 'brute', 'watcher', 'swarm', 'tracker', 'mimic'], decor: ['statue', 'grave', 'rubble'],
   },
 ];
 
@@ -154,6 +154,10 @@ const CREATURE_STATS = {
   brute:   { from: 12, scale: 1.4,  hp: 8 },
   wraith:  { from: 21, scale: 1.1,  hp: 99 },
   lurker:  { from: 31, scale: 1.3,  hp: 4 },
+  swarm:   { from: 8,  scale: 1.0,  hp: 10 },   // ışıktan kaçar, karanlıkta kemirir
+  watcher: { from: 14, scale: 1.0,  hp: 2 },    // yalnız ışığı görür, çığlıkla herkesi çağırır
+  mimic:   { from: 19, scale: 1.0,  hp: 4 },    // sandık kılığında
+  tracker: { from: 24, scale: 1.05, hp: 5 },    // görür + duyar, arar, atlar
 };
 /* açık havadaki saklama yerleri — perdeye göre */
 const STASH_KINDS = {
@@ -195,10 +199,10 @@ function genLevel(n) {
     playerStart: { x: 130 },
     checkpoints: [130],
     ground: [], platforms: [], walls: [], spikes: [],
-    water: [], windZones: [], barricades: [],
+    water: [], windZones: [],
     pushboxes: [], looseItems: [], crates: [], containers: [],
     doors: [], levers: [], ladders: [], generators: [], poweredDoors: [],
-    cars: [], driveCar: null,
+    cars: [],
     soldiers: [], creatures: [],
     collapses: [], chases: [], ambushes: [],
     decor: [], shafts: [], triggers: [],
@@ -207,7 +211,6 @@ function genLevel(n) {
   };
 
   /* Maria yarığa düştükten sonra son bölüme kadar görünmez; tek sinematik final */
-  L.companion = false;
   if (n === 100) L.endCine = 'final';
   L.noGrab = [];             // tutunulamayan kenarlar (bulmacalar atlanmasın)
 
@@ -240,6 +243,7 @@ function genLevel(n) {
   };
   const creatureStats = (t, k = 1) => {
     const S = CREATURE_STATS[t];
+    if (['swarm', 'watcher', 'mimic'].includes(t)) return { scale: S.scale, hp: Math.round(S.hp * (1 + d)), count: Math.round(8 + d * 8) };
     return { scale: (S.scale + d * (t === 'brute' ? 0.25 : 0.45)) * k, hp: t === 'wraith' ? 99 : Math.round(S.hp * (1 + d * 1.3)) };
   };
 
@@ -355,10 +359,12 @@ function genLevel(n) {
       const w = 520 + rng() * 260;
       const type = pickCreature();
       L.creatures.push({ type, x: x + w * 0.55, patrolMinX: x + 60, patrolMaxX: x + w - 60, ...creatureStats(type) });
-      /* geç bölümlerde zaman zaman ikinci, farklı bir tür */
-      if (d > 0.35 && rng() < 0.35) {
-        const t2 = pickCreature();
-        if (t2 !== type) L.creatures.push({ type: t2, x: x + w * 0.25, patrolMinX: x + 40, patrolMaxX: x + w * 0.5, ...creatureStats(t2, 0.9) });
+      if (type === 'mimic') stash(STASH_KINDS[A.biome][0], x + w * 0.2, gy, null);    // yanında gerçek bir saklama yeri
+      /* ikinci, farklı bir tür — zorlukla sıklaşır. Gözcü tek başına gelmez: çağıracağı biri olur */
+      if (type === 'watcher' || (n >= 8 && rng() < 0.12 + d * 0.6)) {
+        let t2 = pickCreature();
+        if (t2 === type || t2 === 'watcher') t2 = creaturePool().find(t => !['watcher', 'mimic', type].includes(t)) ?? 'stalker';
+        L.creatures.push({ type: t2, x: x + w * 0.25, patrolMinX: x + 40, patrolMaxX: x + w * 0.5, ...creatureStats(t2, 0.9) });
       }
       x += w;
     },
@@ -428,23 +434,6 @@ function genLevel(n) {
       L.ambushes.push({ trigX: x + 260, fromX: x + w + 420, n: d > 0.5 ? 3 : 2, minX: x + 120, maxX: x + w + 200 });
       x += w;
     },
-
-    carDrive() {
-      // bariyer tarlası — anahtar devriyedeki askerin bileğinde
-      const sx = x + 260;
-      L.soldiers.push({ x: sx, patrolMinX: sx - 110, patrolMaxX: sx + 130, facing: -1, hasCarKey: true });
-      L.cars.push({ x: x + 90, groundY: gy, kind: 'sedan', burnt: true });
-      const carX = x + 480;
-      const fieldW = 520;
-      L.driveCar = { x: carX, groundY: gy, travelTo: carX + fieldW + 200 };
-      endSeg(carX + 130);
-      const pitY = gy + 90;
-      L.ground.push({ x0: carX + 126, x1: carX + 130 + fieldW, y: pitY, material: A.material });
-      L.spikes.push({ x0: carX + 140, x1: carX + 120 + fieldW, y: pitY - 2 });
-      for (let i = 0; i < 3; i++) L.barricades.push({ x: carX + 220 + i * 150, groundY: gy });
-      jumpTo(carX + 130 + fieldW);
-      x = carX + 130 + fieldW + 80;
-    },
   };
 
   /* ============ BÖLÜM KURGUSU ============ */
@@ -457,7 +446,58 @@ function genLevel(n) {
   };
   addBuildingChunks(C, H);
   addPuzzleChunks(C, H);
+  addThinkChunks(C, H);
   addHouseChunks(C, H);
+
+  /* yükseltide bittiysek (asansör, baca, üst geçit) aşağı inen el merdiveni */
+  const descend = () => {
+    if (gy >= 560) return;
+    const E = x, top = gy;
+    endSeg(E);
+    L.ladders.push({ x: E + 18, topY: top, bottomY: 596, raised: false, id: 'desc' + (uid++) });
+    jumpTo(E - 70, 600);
+    x = E + 90;
+  };
+
+  /* BÖLÜM DOLGUSU — perde parçaları arasına bulmacalar (çevre + akıl oyunu) ve
+     aksiyon sahneleri eşit aralıkla serpiştirilir. Bölüm uzadıkça yaratık odaları artar. */
+  const fill = (width, nPz, nThink, opts = {}) => {
+    const x0 = x, end = x0 + width;
+    const env = shuffleWith(rng, PUZZLE_POOLS[A.biome] ?? PUZZLE_POOLS.forest);
+    const think = shuffleWith(rng, THINK_TYPES);
+    const list = [];
+    for (let i = 0; i < nThink; i++) list.push(think[i % think.length]);
+    for (let i = 0; list.length < nPz; i++) list.push(env[i % env.length]);
+    const order = shuffleWith(rng, list);
+    const events = order.map((chunk, i) => ({ at: x0 + width * (i + 0.6) / (order.length + 0.4), chunk }));
+    const pieces = (A.setPieces ?? []).filter(p => !(p === 'ambush' && n < 11));
+    if (n >= 2 && pieces.length && !opts.noPieces) {
+      const k = 1 + (d > 0.45 ? 1 : 0) + (width > 9000 ? 1 : 0);
+      for (let i = 0; i < k; i++) events.push({ at: x0 + width * (0.12 + 0.76 * rng()), chunk: pieces[(i + Math.floor(rng() * pieces.length)) % pieces.length] });
+    }
+    events.sort((p, q) => p.at - q.at);
+    const filler = shuffleWith(rng, A.chunks.filter(c => !(c === 'house' && n < 5)));
+    for (let i = 0; i < Math.floor(d * 3); i++) filler.splice(Math.floor(rng() * filler.length), 0, 'creature');
+    let fi = 0, guard = 0;
+    while ((x < end || events.length) && guard++ < 500) {
+      if (events.length && x >= events[0].at) C[events.shift().chunk]?.();
+      else {
+        let chunk = filler[fi++ % filler.length];
+        if ((chunk === 'soldierPost' || chunk === 'sentryGate') && n < 11) chunk = 'flat';
+        C[chunk]?.();
+      }
+      if (rng() < 0.5) C.flat(160 + rng() * 200);
+      /* kontrol noktaları zorlukla seyrekleşir */
+      if (x - (L.checkpoints[L.checkpoints.length - 1] ?? 0) > 900 + d * 1400) L.checkpoints.push(x - 30);
+    }
+  };
+  H.fill = fill;
+
+  /* uzunluk: ilk bölümler ~6.5 bin px, sonlara doğru ~15 bin px (≈10–20 dk).
+     Bulmaca: 2 → 7, bunların 1–3'ü akıl oyunu */
+  const targetW = 6500 + n * 85 + rng() * 800;
+  const nPz = n < 3 ? 2 : Math.min(7, 3 + Math.floor(n / 20));
+  const nThink = n < 12 ? 1 : n < 40 ? 2 : 3;
   const mission = MISSIONS[n];
   const bld = buildingFor(n);
   if (bld) {
@@ -465,43 +505,29 @@ function genLevel(n) {
   } else if (mission) {
     buildMissionLevel(mission, H);
     if (L._x) x = L._x;
-    if (L.vehicle) L.companion = false;
+    /* görevden sonra bölüm sürer (bomba hariç: bitiş bombayı sökmek) */
+    if (mission !== 'bomb') {
+      descend();
+      C.flat(260);
+      if (n === 1) fill(2400, 1, 1, { noPieces: true });
+      else fill(targetW * 0.55, Math.max(1, nPz - 2), Math.max(1, nThink - 1));
+    }
   } else {
-    /* perde şablonundan parça dizilimi + bulmacalar. Her bölümde en az bir akıl
-       oyunu; ilerleyen bölümlerde iki farklı bulmaca. */
-    const targetW = 3000 + n * 18 + rng() * 500;
-    const seq = shuffleWith(rng, A.chunks.filter(c => !(c === 'house' && n < 5)));
-    const pool = shuffleWith(rng, PUZZLE_POOLS[A.biome] ?? PUZZLE_POOLS.forest);
-    const nPz = n < 12 ? 1 : 2;
-    const puzzles = pool.slice(0, nPz);
-    /* AKSİYON SAHNESİ: bölüm 2'den itibaren çöken köprü / kovalamaca / pusu */
-    const pieces = (A.setPieces ?? []).filter(p => !(p === 'ambush' && n < 11));
-    if (n >= 2 && pieces.length) {
-      const pick = pieces[Math.floor(rng() * pieces.length)];
-      seq.splice(1, 0, pick);
-      if (d > 0.45 && pieces.length > 1 && rng() < 0.5) seq.splice(seq.length - 1, 0, pieces[(pieces.indexOf(pick) + 1) % pieces.length]);
-    }
-    seq.splice(Math.min(2, seq.length), 0, puzzles[0]);
-    if (puzzles[1]) seq.splice(Math.min(seq.length - 1, 6), 0, puzzles[1]);
-    let si = 0;
-    const must = new Set(puzzles);
-    while (x < targetW || must.size) {
-      let chunk = seq[si % seq.length];
-      si++;
-      if ((chunk === 'soldierPost' || chunk === 'sentryGate') && n < 11) chunk = 'flat';   // perde 1'de asker yok
-      if (si > seq.length && must.size && !must.has(chunk)) continue;                    // hedef doldu, kalan bulmacayı koy
-      C[chunk]?.();
-      must.delete(chunk);
-      if (rng() < 0.55) C.flat(180 + rng() * 200);
-      L.checkpoints.push(x - 30);
-      if (si > seq.length * 3) break;
-    }
+    fill(targetW, nPz, nThink);
   }
 
   /* bölüm 1: uyandığın yerde Maria'nın atkısı — sözsüz anlatım */
   if (n === 1) L.scarfAt = { x: 230, groundY: 600 };
 
   /* bölüm 17: ölü askerin yanında tabanca */
+  /* bölüm 3: levye yarığa düşmüş terk edilmiş bir arabanın bagajında; hemen
+     ardından ilk çivili sandık. (1–2. bölümlerde zorlanacak hiçbir şey yok) */
+  if (n === 3) {
+    stash('trunk', 520, 600, ['crowbar']);
+    L.crates.push({ x: 820, groundY: 600, contents: ['battery'], needsCrowbar: true, fixed: true });
+    L.triggers.push({ x: 430, text: IS_TOUCH ? 'Arabaya dokun: bagajı aç.' : '[E] bagajı aç.', icon: '☝' });
+    L.triggers.push({ x: 700, text: IS_TOUCH ? 'Çivili sandığa basılı tut: levyeyle aç.' : 'Sandığın yanında [E] basılı tut: levyeyle aç.', icon: '✊' });
+  }
   if (n === 17) {
     L.decor.push({ type: 'deadSoldier', x: 480, groundY: 600 });
     L.looseItems.push({ kind: 'pistol', x: 510, y: 560 });
@@ -563,6 +589,15 @@ function genLevel(n) {
     const w0 = L.creatures.find(c => c.type === 'wraith');
     L.triggers.push({ x: w0.patrolMinX - 200, text: UI_HINT('wraith'), icon: '◌' });
   }
+  /* yeni türler ilk göründüğü bölümlerde bir kez anlatılır */
+  const firstOf = (t, from, text, icon) => {
+    const c0 = L.creatures.find(c => c.type === t);
+    if (c0 && n <= from + 6) L.triggers.push({ x: Math.max(260, c0.patrolMinX - 220), text, icon });
+  };
+  firstOf('swarm', CREATURE_STATS.swarm.from, 'Kemirgenler karanlıkta avlanır. Feneri üstlerine tut: dağılırlar.', '✦');
+  firstOf('watcher', CREATURE_STATS.watcher.from, 'Sarkan koza yalnız ışığı görür. Gözü açılmadan feneri kapat, karanlıkta geç.', '◉');
+  firstOf('tracker', CREATURE_STATS.tracker.from, 'İzci hem görür hem duyar. Gözden kaybolursan son gördüğü yeri arar — bekle.', '◐');
+  firstOf('mimic', CREATURE_STATS.mimic.from, 'Her sandık sandık değildir. Nefes alanına yaklaşma.', '?');
   if (L.creatures.some(c => c.type === 'crawler') && n <= 8) {
     const c0 = L.creatures.find(c => c.type === 'crawler');
     L.triggers.push({ x: c0.patrolMinX - 160, text: UI_HINT('crawler'), icon: '≋' });
@@ -576,13 +611,17 @@ function genLevel(n) {
 function distributeLoot(L, o) {
   const { rng, d, n, gunEra, worldW, stash, biome } = o;
   const med = [], gear = [];
-  med.push('bandage', 'bandage');
-  if (rng() < 0.4 + d * 0.2) med.push('bandage');
+  /* uzun bölümde daha çok malzeme; geç bölümlerde kıtlaşır */
+  const lenK = Math.min(3, Math.max(1, worldW / 5000));
+  const nMed = Math.max(1, Math.round(lenK * (d > 0.6 ? 0.8 : 1.1)));
+  for (let i = 0; i < nMed; i++) med.push('bandage');
+  if (rng() < 0.4 - d * 0.3) med.push('bandage');
   const darkLevel = L.dark > 0.45;
-  const needBat = n >= 13 && (L.dark > 0.2 || L.blackouts) ? (L.dark > 0.6 ? 3 : 2) : (darkLevel ? 2 : 0);
+  const needBat0 = n >= 13 && (L.dark > 0.2 || L.blackouts) ? (L.dark > 0.6 ? 3 : 2) : (darkLevel ? 2 : 0);
+  const needBat = Math.round(needBat0 * lenK * (d > 0.6 ? 0.75 : 1));
   for (let i = 0; i < needBat; i++) gear.push('battery');
   if (!needBat && rng() < 0.5) gear.push('battery');
-  if (gunEra) { gear.push('mag', 'mag'); if (rng() < 0.5) gear.push('mag'); }
+  if (gunEra) { for (let i = 0; i < Math.round(1 + lenK); i++) gear.push('mag'); if (rng() < 0.5 - d * 0.3) gear.push('mag'); }
 
   const shuffle = (a) => shuffleWith(rng, a);
   const isMed = (c) => CONTAINER_DEFS[c.kind]?.med;
@@ -628,7 +667,6 @@ function distributeLoot(L, o) {
 function buildBombLevel(L, C, rng, getX, setX, getGy) {
   L.bombTime = 225;              // saniye
   L.blackouts = false;
-  L.companion = false;
   C.flat(420);
   C.sentryGate();
   let x = getX();

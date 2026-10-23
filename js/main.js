@@ -11,19 +11,38 @@
 
 const MatterLib = Phaser.Physics.Matter.Matter;
 
-/* ---------------- ayarlar + kayıt ---------------- */
-window.SF_SETTINGS = { vol: 0.8, music: 0.7, grain: 0.55 };
+/* ---------------- ayarlar + kayıt ----------------
+   sens: dokunma hassasiyeti (0.5 = parmağı daha uzağa kaydırmak gerekir,
+   1.5 = küçük hareket yeter) · vibe: titreşim açık/kapalı */
+window.SF_SETTINGS = { vol: 0.8, music: 0.7, grain: 0.55, sens: 1, vibe: true };
 /* zayıf mobil cihazlarda ağır shader efektlerini (kenar ışığı) kapat */
 window.SF_LOWFX = (('ontouchstart' in window) || navigator.maxTouchPoints > 0) &&
   ((navigator.hardwareConcurrency ?? 8) <= 4 || (navigator.deviceMemory ?? 8) <= 3);
 if ((('ontouchstart' in window) || navigator.maxTouchPoints > 0)) window.SF_SETTINGS.grain = 0.35;
+try { Object.assign(window.SF_SETTINGS, JSON.parse(localStorage.getItem('sf_settings')) || {}); } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('sf_settings', JSON.stringify(SF_SETTINGS)); } catch (e) {} };
+/* titreşim — ayarlardan kapatılabilir */
+window.SFVibrate = (pattern) => {
+  if (!SF_SETTINGS.vibe) return;
+  try { navigator.vibrate?.(pattern); } catch (e) {}
+};
+
+/* bölüm istatistikleri — kontrol noktasından dönüşte sıfırlanmaz, bölüm özetinde gösterilir */
+const RunStats = { level: null, time: 0, deaths: 0, found: new Set() };
+const JUNK_ITEMS = new Set(['stone', 'can', 'plank', 'shard', 'deadBattery', 'magEmpty']);
 
 const SaveGame = {
   load() {
     try { return JSON.parse(localStorage.getItem('sf5_save')) || {}; } catch (e) { return {}; }
   },
   save(d) { try { localStorage.setItem('sf5_save', JSON.stringify(d)); } catch (e) {} },
-  get unlocked() { return LEVEL_COUNT; },   // tüm bölümler açık
+  /* açılan son bölüm: bitirdiğin bölümün bir sonrası. Geliştirirken tüm bölümleri
+     açmak için adrese ?unlockall ekle. */
+  get unlocked() {
+    if (/[?&]unlockall\b/.test(location.search)) return LEVEL_COUNT;
+    const d = this.load();
+    return clamp(Math.max(1, d.unlocked ?? 0, d.current ?? 0), 1, LEVEL_COUNT);
+  },
   unlock(lv) { const d = this.load(); d.unlocked = Math.max(d.unlocked ?? 0, lv); this.save(d); },
   setCurrent(lv, state) { const d = this.load(); d.current = lv; d.state = state; this.save(d); },
 };
@@ -36,122 +55,6 @@ const Input = {
   up: false,                 // joystick yukarı (merdiven)
   jumpHit: false, actHit: false, fireHit: false, flashHit: false, reloadHit: false, healHit: false,
 };
-
-/* ============================================================
-   MARIA — yoldaş YZ (perde 1)
-   ============================================================ */
-class Companion {
-  constructor(scene) {
-    this.scene = scene;
-    this.rig = new HumanRig(scene, { scale: 0.88, depth: 99, variant: 'maria' });
-    this.x = 0; this.y = 0;
-    this.vx = 0;
-    this.facing = 1;
-    this.visible = true;
-    this.cineMode = false;
-  }
-  destroy() { this.rig.destroy(); }
-  setVisible(v) { this.visible = v; this.rig.setVisible(v); }
-
-  /* Oyuncunun gerçek yolunu "iz" (breadcrumb) olarak kaydeder ve Maria bu izi
-     belli bir mesafe geriden tekrar oynar. Böylece engellerin İÇİNDEN geçmez:
-     oyuncu nereye zıpladıysa/tırmandıysa Maria da oradan geçer. */
-  update(dt, player, groundYAt) {
-    if (!this.visible || this.cineMode) return;
-
-    /* iz, oyuncu yere ilk bastığında başlar — spawn düşüşündeki havadaki
-       noktayı kaydedip Maria'yı havada asılı bırakmasın */
-    if (!this.trail) {
-      if (!player.grounded) {
-        const gy = this.surfaceAt(this.x, this.y - 30);
-        this.y = gy ?? this.y;
-        this.rig.update(dt, { x: this.x, y: this.y - this.rig.A.standH, vx: 0, vy: 0, grounded: true, facing: this.facing, mode: 'idle', groundY: this.y });
-        return;
-      }
-      this.trail = [{ x: player.x, y: player.y }];
-    }
-    const last = this.trail[this.trail.length - 1];
-    const moved = Math.hypot(player.x - last.x, player.y - last.y);
-    if (moved > 7) {
-      this.trail.push({ x: player.x, y: player.y });
-      if (this.trail.length > 160) this.trail.shift();
-    }
-
-    // iz boyunca ~58px geriden hedef nokta bul (yol uzunluğuna göre)
-    const FOLLOW = 58;
-    let target = this.trail[0], acc = 0;
-    for (let i = this.trail.length - 1; i > 0; i--) {
-      acc += Math.hypot(this.trail[i].x - this.trail[i - 1].x, this.trail[i].y - this.trail[i - 1].y);
-      if (acc >= FOLLOW) { target = this.trail[i - 1]; break; }
-    }
-
-    /* YÜZEY TAKİBİ — eskiden yalnız zemin şeritleri biliniyordu: oyuncu bir
-       platforma/kutuya çıkınca Maria "zemin yok" sanıp havada süzülüyordu.
-       Artık zemin + platform + itme kutusu + sandık + araç üstlerini bilir;
-       yürür, gerektiğinde gerçek bir yay çizerek zıplar ve iner. */
-    const G = 1500;
-    const dx = target.x - this.x;
-    if (Math.abs(dx) > 700 || this.y > KILL_Y - 40) {             // çok geride / düştü → ışınla
-      this.x = target.x;
-      this.y = this.surfaceAt(this.x, target.y - 10) ?? target.y;
-      this.vy = 0; this.air = false;
-      this.trail = [{ x: player.x, y: player.y }];
-    }
-    const want = Math.abs(dx) > 20 ? Math.sign(dx) * Math.min(this.air ? 250 : 235, Math.abs(dx) * 2.6) : 0;
-    this.vx = lerp(this.vx, want, 1 - Math.exp(-dt * (this.air ? 3 : 7)));
-    if (Math.abs(this.vx) > 12) this.facing = Math.sign(this.vx);
-    else if (!this.air) this.facing = player.x > this.x ? 1 : -1;
-
-    const prevY = this.y;
-    if (!this.air) {
-      const ahead = this.x + Math.sign(this.vx || dx) * 26;
-      const under = this.surfaceAt(this.x, this.y - 6);
-      const aheadS = this.surfaceAt(ahead, this.y - 40);
-      const needUp = target.y < this.y - 26 && Math.abs(dx) < 140;
-      const gapAhead = Math.abs(this.vx) > 30 && (aheadS == null || aheadS > this.y + 50) && target.y < this.y + 30;
-      if (needUp || gapAhead) {
-        const h = Math.max(46, this.y - target.y + 34);
-        this.vy = -Math.sqrt(2 * G * h);
-        this.air = true;
-        if (gapAhead) this.vx = Math.sign(this.vx) * 240;
-      } else if (under == null || under > this.y + 8) {
-        this.air = true; this.vy = 0;                             // kenardan düştü
-      } else {
-        this.y = lerp(this.y, under, 1 - Math.exp(-dt * 25));
-      }
-    }
-    this.x += this.vx * dt;
-    if (this.air) {
-      this.vy += G * dt;
-      this.y += this.vy * dt;
-      if (this.vy > 0) {
-        const land = this.surfaceAt(this.x, prevY - 4);
-        if (land != null && this.y >= land) { this.y = land; this.air = false; this.vy = 0; }
-      }
-    }
-    const vy = this.air ? this.vy : (this.y - prevY) / Math.max(dt, 0.001);
-    const gs = this.surfaceAt(this.x, this.y - 4);
-    this.rig.update(dt, {
-      x: this.x, y: this.y - this.rig.A.standH,
-      vx: this.vx, vy, grounded: !this.air, facing: this.facing,
-      mode: this.air ? 'air' : (Math.abs(this.vx) > 12 ? 'move' : 'idle'),
-      groundY: gs ?? this.y + 300,
-    });
-  }
-
-  /* x'te, refY'nin altındaki (veya biraz üstündeki) en yüksek basılabilir yüzey */
-  surfaceAt(x, refY) {
-    const sc = this.scene;
-    let best = null;
-    const consider = (top) => { if (top >= refY - 2 && (best == null || top < best)) best = top; };
-    for (const g of sc.groundSegs) if (x >= g.x0 && x <= g.x1) consider(g.y);
-    for (const p of sc.platforms) if (!p.ceiling && x >= p.x && x <= p.x + p.w) consider(p.y);
-    for (const pb of sc.pushboxes ?? []) if (Math.abs(x - pb.body.position.x) < pb.w / 2) consider(pb.body.bounds.min.y);
-    for (const c of sc.crates ?? []) if (Math.abs(x - c.x) < c.w / 2) consider(c.y - c.h / 2);
-    for (const c of sc.cars ?? []) if (x > c.coverX0 + 10 && x < c.coverX1 - 10) consider(c.groundY - c.coverH - 12);
-    return best;
-  }
-}
 
 /* ============================================================
    GAME SCENE
@@ -167,12 +70,8 @@ class GameScene extends Phaser.Scene {
       flashBattery: 100, batteries: 1,
     }, data.state ?? {});
     this.spawnX = data.spawnX ?? null;
-    /* bomba bölümünde oyuncu Maria: Kai'nin eşyaları saklanır, bölüm sonunda geri verilir */
-    const chk = getLevel(this.levelId);
-    this.playAs = chk.playAs ?? 'kai';
-    this.kaiCarry = { ...this.carry };
-    if (this.playAs === 'maria') {
-      this.carry = { crowbar: false, bandages: 1, gun: false, loaded: 0, mags: 0, flashBattery: 100, batteries: 1 };
+    if (!(this.spawnX != null && RunStats.level === this.levelId)) {
+      RunStats.level = this.levelId; RunStats.time = 0; RunStats.deaths = 0; RunStats.found = new Set();
     }
   }
 
@@ -183,14 +82,14 @@ class GameScene extends Phaser.Scene {
 
     SFAudio.init(); SFAudio.resume(); SFAudio.startAmbience();
     SFAudio.setWeather(ch.rain ?? 0, ch.wind ?? 0.5);
+    SFAudio.setBiomeAmbience(ch.type === 'intro' ? 'forest' : ch.biome, { interior: !!ch.interior });
     SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music);
     /* müzik: bölümde sahneye göre parça değişir (bkz. music.js); giriş kendi temasını çalar */
-    SFAudio.stopMusicBed();
     if (this.isIntro) SFMusic.stop(0.8);
     else SFMusic.setScene(ch.interior ? 'interior' : 'explore', ch.biome, 0);
     this.events.once('shutdown', () => {
-      SFAudio.stopMusicBed();
       SFMusic.stop(0.6);
+      SFAudio.setBiomeAmbience(null);
       const M = this.mis;
       M?.fire?.snd?.stop(); M?.flood?.hiss?.stop(); M?.vehicle?.engine?.stop(0.2);
       UI.showBombHud(false); UI.hide('bomb-panel'); UI.hide('keypad-panel'); UI.showTutorial(null); UI.showCode(null);
@@ -300,10 +199,8 @@ class GameScene extends Phaser.Scene {
     this.ladders = [];
     this.generators = [];
     this.poweredDoors = [];
-    this.barricades = [];
     this.bullets = [];
     this.playerBullets = [];
-    this.driveCar = null;
 
     if (!this.isIntro) this.buildGameplay();
 
@@ -318,7 +215,7 @@ class GameScene extends Phaser.Scene {
     this.hpMax = 4;
     this.hp = 4;
     this.state = { ...this.carry };
-    this.inv = { crowbar: this.carry.crowbar, key: false, carkey: false, fuse: false, cutters: false };
+    this.inv = { crowbar: this.carry.crowbar, key: false, fuse: false, cutters: false };
     this.flashOn = false;
     this.breath = 8;
     this.dead = false;
@@ -366,6 +263,14 @@ class GameScene extends Phaser.Scene {
     if (!this.isIntro) cam.setZoom(this.baseZoom);
 
     this.triggers = (ch.triggers ?? []).map(t => ({ ...t, fired: false }));
+    if (!this.isIntro) this.buildCheckpointMarks();
+    /* bölümde bulunabilecek eşyalar (taş, teneke gibi çöpler hariç) */
+    this.lootKeys = new Set();
+    const addLoot = (pre, list) => list.forEach((raw, i) => { if (!JUNK_ITEMS.has(raw.split(':')[0])) this.lootKeys.add(pre + ':' + i); });
+    for (const c of (ch.containers ?? [])) addLoot('c' + Math.round(c.x), c.contents ?? []);
+    for (const c of (ch.crates ?? [])) addLoot('k' + Math.round(c.x), c.contents ?? []);
+    for (const it of (ch.looseItems ?? [])) if (!JUNK_ITEMS.has(it.kind)) this.lootKeys.add(it.kind + '@' + Math.round(it.x / 40));
+    for (const n of (ch.notes ?? [])) this.lootKeys.add('n' + n.lock + ':' + n.idx);
 
     this.matter.world.on('collisionstart', (ev) => {
       for (const pair of ev.pairs) {
@@ -380,12 +285,16 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    this.scale.on('resize', (gs) => {
+    /* ölçek yöneticisi oyun genelinde tek: dinleyici sahne kapanınca kaldırılmazsa her bölümde
+       bir tane daha birikir ve ekran döndürülünce yok edilmiş katmanlara erişip hata verir */
+    const onResize = (gs) => {
       this.parallax.resize(gs.width, gs.height);
       this.fx.resize(gs.width, gs.height);
       this.lights2.resize(gs.width, gs.height);
       if (!this.isIntro) { this.baseZoom = this.fitZoom(); this.cameras.main.setZoom(this.baseZoom); }
-    });
+    };
+    this.scale.on('resize', onResize);
+    this.events.once('shutdown', () => this.scale.off('resize', onResize));
 
     UI.fadeIn();
     if (!this.isIntro) {
@@ -478,14 +387,20 @@ class GameScene extends Phaser.Scene {
     for (const c of (ch.containers ?? [])) this.containers.push(new Container(this, c));
     for (const p of (ch.pushboxes ?? [])) this.pushboxes.push(new PushBox(this, p));
     for (const it of (ch.looseItems ?? [])) this.physItems.push(new PhysItem(this, it.kind, it.x, it.y));
-    if (ch.fallbackCrowbarAt && !this.carry.crowbar) {
-      this.physItems.push(new PhysItem(this, 'crowbar', ch.fallbackCrowbarAt.x, ch.fallbackCrowbarAt.y));
-    }
-    // levyesiz oyuncu için yedek levye (kutu bulmacaları kilitlenmesin)
+    /* levyesiz oyuncu için yedek levye (kutu bulmacaları kilitlenmesin). Yerde durmaz:
+       ilk zorlanacak yerden önceki bir dolapta / bagajda saklıdır; yoksa oraya
+       terk edilmiş bir araba (iç mekânda dolap) konur. */
     const firstPry = [...(ch.crates ?? []), ...(ch.containers ?? []).filter(c => c.needsCrowbar)].sort((a, b) => a.x - b.x)[0];
-    if (!this.carry.crowbar && firstPry && this.levelId > 1) {
-      const c0 = firstPry;
-      this.physItems.push(new PhysItem(this, 'crowbar', Math.max(220, c0.x - 160), this.groundYAt(Math.max(220, c0.x - 160)) - 40));
+    if (!this.carry.crowbar && firstPry && this.levelId > 3) {
+      const inside = (x) => !!ch.interior || (ch.buildings ?? []).some(b => x > b.x0 && x < b.x1);
+      const host = this.containers.filter(c => !c.needsCrowbar && c.x < firstPry.x - 40 && ['wardrobe', 'cabinet', 'locker', 'trunk', 'drawer', 'chest'].includes(c.kind))
+        .sort((a, b) => b.x - a.x)[0];
+      if (host) host.contents = [...host.contents, 'crowbar'];           // kopya: önbellekteki bölüm verisi değişmesin
+      else {
+        let x = Math.max(240, firstPry.x - 200);
+        while (x > 160 && this.groundYAt(x - 20) !== this.groundYAt(x + 140)) x -= 40;
+        this.containers.push(new Container(this, { kind: inside(x) ? 'cabinet' : 'trunk', x, groundY: this.groundYAt(x), contents: ['crowbar'] }));
+      }
     }
     for (const d of (ch.doors ?? [])) this.doors.push(new Door(this, d));
     for (const lv of (ch.levers ?? [])) this.levers.push(new Lever(this, lv));
@@ -502,24 +417,12 @@ class GameScene extends Phaser.Scene {
       this.poweredDoors.push(obj);
       this.drawGrate(obj);
     }
-    for (const b of (ch.barricades ?? [])) {
-      const body = this.matter.add.rectangle(b.x, b.groundY - 26, 26, 52, {
-        isStatic: true, label: 'barricade', collisionFilter: { category: CAT.WORLD, mask: 0xFFFF },
-      });
-      const gfx = this.add.graphics().setDepth(93);
-      gfx.fillStyle(0x0c0c12, 1);
-      gfx.fillRect(b.x - 6, b.groundY - 52, 12, 52);
-      gfx.fillRect(b.x - 22, b.groundY - 40, 44, 9);
-      gfx.fillRect(b.x - 18, b.groundY - 20, 36, 8);
-      this.barricades.push({ x: b.x, groundY: b.groundY, body, gfx, crushed: false });
-    }
-    if (ch.driveCar) this.driveCar = new DriveCar(this, ch.driveCar);
     for (const s of (ch.soldiers ?? [])) {
       const sol = new Soldier(this, {
         x: s.x, groundY: this.groundYAt(s.x),
         patrolMinX: s.patrolMinX, patrolMaxX: s.patrolMaxX,
         facing: s.facing ?? -1, static: s.static,
-        hp: s.hp, tough: s.tough, hasCarKey: s.hasCarKey,
+        hp: s.hp, tough: s.tough,
       });
       sol.onShoot = (x, y, dir, target) => this.spawnBullet(x, y, dir, target);
       this.soldiers.push(sol);
@@ -590,31 +493,45 @@ class GameScene extends Phaser.Scene {
       const pd = this.poweredDoors.find(p => p.id === link.door);
       this.openGrate(pd, 'Bir yerlerde demir bir kapak açıldı.');
     }
+    if (link?.lift) Escapes.powerLift(this);
+    if (link?.puzzle) Puzzles.onPower(this, link.puzzle);
     const gen = this.generators.find(g => g.id === id);
     if (gen) this.lights2.addLight({ x: gen.x, y: gen.groundY - 40, r: 200, type: 'halo', intensity: 0.9 });
   }
 
-  crushBarricadesAt(x) {
-    for (const b of this.barricades) {
-      if (b.crushed || Math.abs(b.x - x) > 46) continue;
-      b.crushed = true;
-      this.matter.world.remove(b.body);
-      b.gfx.destroy();
-      SFAudio.crateBurst();
-      this.cameras.main.shake(180, 0.008);
-      for (let i = 0; i < 3; i++) {
-        this.physItems.push(new PhysItem(this, 'plank', b.x + (Math.random() - 0.5) * 20, b.groundY - 40, {
-          vx: 3 + Math.random() * 4, vy: -4 - Math.random() * 4,
-        }));
-      }
+
+  /* ---------------- kontrol noktaları ----------------
+     Her kontrol noktasında yere dikilmiş küçük bir taş fener durur: sönükken
+     yalnız kor gibi bir nokta, geçince fitil tutuşur ve sıcak bir ışık kalır.
+     Öldüğünde son yanan fenerden devam edersin. */
+  buildCheckpointMarks() {
+    this.cpMarks = [];
+    for (const cp of (this.ch.checkpoints ?? [])) {
+      if (cp < 300 || cp > this.ch.exitX - 150) continue;
+      const gy = this.groundYAt(cp);
+      if (gy >= KILL_Y) continue;
+      const g = this.add.graphics().setDepth(90);
+      const c = 0x0b0b10;
+      g.fillStyle(c, 1);
+      g.fillRect(cp - 9, gy - 8, 18, 8);              // taban taşı
+      g.fillRect(cp - 3, gy - 34, 6, 28);             // direk
+      g.fillRect(cp - 8, gy - 52, 16, 4);             // çatı
+      g.fillTriangle(cp - 6, gy - 52, cp + 6, gy - 52, cp, gy - 58);
+      g.lineStyle(1.4, c, 1); g.strokeRect(cp - 6, gy - 48, 12, 14);   // fener kafesi
+      const flame = this.add.image(cp, gy - 41, 'softDot').setDepth(91).setScale(0.18)
+        .setAlpha(0.25).setTint(0xb04a2a).setBlendMode(Phaser.BlendModes.ADD);
+      const light = this.lights2.addLight({ x: cp, y: gy - 41, r: 110, type: 'halo', intensity: 0.75, flicker: 0.08, on: false });
+      const m = { x: cp, gy, g, flame, light, lit: false };
+      if (cp <= this.checkpointX) this.lightCheckpoint(m, false);
+      this.cpMarks.push(m);
     }
   }
-  onCarArrived(car) {
-    if (this.player?.inCar) {
-      this.player.inCar = false;
-      MatterLib.Body.setPosition(this.player.body, { x: car.x + 110, y: car.groundY - 60 });
-      this.rig.setVisible(true);
-    }
+  lightCheckpoint(m, announce) {
+    m.lit = true;
+    m.light.on = true;
+    m.flame.setTint(0xf0d8a0).setScale(0.42).setAlpha(0.9);
+    this.tweens.add({ targets: m.flame, alpha: 0.65, scale: 0.36, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (announce) SFAudio.checkpoint?.();
   }
 
   /* ---------------- elektrik kesintisi ---------------- */
@@ -660,7 +577,7 @@ class GameScene extends Phaser.Scene {
       climbing: false, ladder: null,
       inCar: false,
     };
-    this.rig = new HumanRig(this, this.playAs === 'maria' ? { scale: 0.9, depth: 100, variant: 'maria' } : { scale: 0.94, depth: 100, variant: 'kai' });
+    this.rig = new HumanRig(this, { scale: 0.94, depth: 100, variant: 'kai' });
     this.rig.stepCallback = (f) => SFAudio.footstep(this.player.groundMat, f);
     /* fener ışığı */
     this.flashLight = this.lights2.addLight({ x, y, r: 270, type: 'cone', facing: 1, on: false, intensity: 1.1 });
@@ -683,7 +600,6 @@ class GameScene extends Phaser.Scene {
     for (const l of this.levers) if (!l.pulled) T.push({ x: l.x, y: l.groundY - 40, ax: l.x });
     for (const d of this.doors) if (!d.open) T.push({ x: d.x, y: d.groundY - d.h / 2, ax: d.x - 30 * Math.sign(d.x - this.player.body.position.x) });
     for (const g of this.generators) if (!g.powered) T.push({ x: g.x, y: g.groundY - 30, ax: g.x });
-    if (this.driveCar && !this.driveCar.started) T.push({ x: this.driveCar.x, y: this.driveCar.groundY - 40, ax: this.driveCar.x });
     const M = this.mis;
     if (M) {
       for (const f of M.fuseBoxes) if (!f.done) T.push({ x: f.x, y: f.y, ax: f.x });
@@ -694,6 +610,7 @@ class GameScene extends Phaser.Scene {
       if (M.vehicle && !M.vehicle.started) T.push({ x: M.vehicle.x, y: M.vehicle.y - 30, ax: M.vehicle.x });
     }
     T.push(...Puzzles.tapTargets(this));
+    if (M) T.push(...Escapes.tapTargets(this));
     for (const s of (this.stairs ?? [])) T.push({ x: s.x0 + s.dir * 40, y: s.y0 - 40, ax: s.x0 });
     return T;
   }
@@ -902,13 +819,29 @@ class GameScene extends Phaser.Scene {
         return;
       }
     }
-    if (body.velocity.y < -2.5) return;               // yükselişte değil, tepede / düşüşte yakalar
     const cands = [...(this.ledges ?? [])];
     for (const pb of this.pushboxes) {
       const b = pb.body.bounds;
       cands.push({ x: b.max.x, y: b.min.y, side: 1, grab: true, pb, off: b.max.x - pb.body.position.x });
       cands.push({ x: b.min.x, y: b.min.y, side: -1, grab: true, pb, off: b.min.x - pb.body.position.x });
     }
+    /* havada bir kez daha zıpla → uzan: yakında tutunacak kenar varsa (yön, yükseliş fark
+       etmez) eller ona atılır. Kenar yoksa hiçbir şey olmaz — çift zıplama yok. */
+    if (Input.jumpHit && !P.grounded && P.coyote <= 0 && !P.climbing && !P.swimming && !P.stair) {
+      Input.jumpHit = false;
+      let best = null, bd = 1e9;
+      for (const lg of cands) {
+        if (!lg.grab) continue;
+        const rel = (body.position.x - lg.x) * lg.side;
+        if (rel < -12 || rel > 70) continue;
+        if (lg.y < top - 58 || lg.y > top + 50) continue;
+        if (!lg.pb && this.surfaceCovers(lg.x, lg.y, lg.side)) continue;
+        const d = Math.abs(rel - 14) + Math.abs(lg.y - top) * 0.6;
+        if (d < bd) { bd = d; best = lg; }
+      }
+      if (best) { this.startHang(best, false); return; }
+    }
+    if (body.velocity.y < -2.5) return;               // yükselişte değil, tepede / düşüşte yakalar
     for (const lg of cands) {
       if (!lg.grab) continue;
       const rel = (body.position.x - lg.x) * lg.side;  // + : oyuncu açık tarafta
@@ -1025,8 +958,12 @@ class GameScene extends Phaser.Scene {
     }
     const lipG = this.add.graphics().setDepth(71);
     const low = !!window.SF_LOWFX;
+    /* kör dehlizde çukurlar ışık vermez — yalnız damla sesiyle bulunur */
+    const E = this.ch.echo;
+    const dark = (x) => !!E && x > E.x0 && x < E.x1;
     for (const p of pits) {
       const w = p.x1 - p.x0, cx = (p.x0 + p.x1) / 2;
+      if (dark(cx)) continue;
       const mist = this.add.image(cx, p.y + 46, 'fogPuff').setDepth(69)
         .setDisplaySize(w + 70, 150).setTint(0x9aa6b8).setAlpha(0.42).setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({ targets: mist, alpha: 0.24, duration: 2200 + Math.random() * 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -1065,6 +1002,7 @@ class GameScene extends Phaser.Scene {
     /* diken çukurları: uçlar ışıkta seçilsin */
     for (const sp of (this.ch.spikes ?? [])) {
       const w = sp.x1 - sp.x0;
+      if (dark(sp.x0)) continue;
       for (let x = sp.x0 + 60; x < sp.x1; x += 200) {
         this.lights2.addLight({ x: Math.min(x, sp.x1 - 30), y: sp.y - 20, r: Math.min(140, w * 0.5 + 50), type: 'halo', intensity: 0.38 });
       }
@@ -1269,7 +1207,7 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: cam, zoom: z * (1 + 0.07 * power), duration: 110, yoyo: true, hold: 160, ease: 'Quad.easeOut' });
     this.fx.scareFlash?.(power);
     for (let i = 0; i < 4; i++) this.time.delayedCall(350 + i * 820, () => SFAudio.heartbeat?.(1 - i * 0.2));
-    try { navigator.vibrate?.([60, 40, 120]); } catch (e) {}
+    SFVibrate([60, 40, 120]);
   }
 
   /* NPC durum işareti — konuşma yok: başın üstünde sözsüz sembol.
@@ -1299,6 +1237,7 @@ class GameScene extends Phaser.Scene {
     }
     for (const c of this.creatures) {
       if (!c.dead && Math.abs(c.x - x) < radius * 0.8) c.hearNoise?.(x, power);
+      if (!c.dead) creatureHeard(c, x, power, radius);
     }
   }
 
@@ -1318,6 +1257,7 @@ class GameScene extends Phaser.Scene {
     this.hp -= amount;
     this.invulnT = 0.9;
     SFAudio.hurt();
+    SFVibrate(amount > 1 ? 70 : 35);
     this.fx.hitFlash(0.3);
     this.cameras.main.shake(220, 0.008);
     this.rig.hurtT = 0.5;
@@ -1331,9 +1271,10 @@ class GameScene extends Phaser.Scene {
   killPlayer(dir = 0) {
     if (this.dead) return;
     this.dead = true;
-    SFAudio.stopMusicBed();
+    RunStats.deaths++;
     SFMusic.stop(0.6);
     SFAudio.playDeathChord();
+    SFVibrate([90, 50, 200]);
     this.rig.action = null;
     this.rig.setVisible(true);
     if (this.player.inVehicle) { this.player.inVehicle.engine?.stop(0.3); this.player.inVehicle = null; this.player.inCar = false; }
@@ -1344,8 +1285,24 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(1700, () => UI.showDeath());
   }
 
+  /* çukura / dikene düştü: son canı değilse son sağlam zemine geri konur */
+  fallBack() {
+    const P = this.player;
+    if (this.hp <= 1 || !P.safe) { this.killPlayer(0); return; }
+    this.hp -= 1;
+    SFAudio.hurt(); SFVibrate(60);
+    UI.updateHP(this.hp, this.hpMax, true);
+    this.fx.setLowHp(this.hp <= 1 ? 0.8 : this.hp <= 2 ? 0.35 : 0);
+    this.fx.hitFlash(0.4);
+    MatterLib.Body.setPosition(P.body, { x: P.safe.x, y: P.safe.y - 4 });
+    MatterLib.Body.setVelocity(P.body, { x: 0, y: 0 });
+    P.hang = null; P.mantle = null; P.slip = null; P.slideT = 0; P.rollT = 0; P.carryVx = 0;
+    this.invulnT = 1.2;
+    this.cameras.main.scrollX = P.safe.x + P.facing * 90 - this.cameras.main.width / 2;
+  }
+
   respawn() {
-    this.scene.restart({ level: this.levelId, state: { ...this.kaiCarry }, spawnX: this.checkpointX });
+    this.scene.restart({ level: this.levelId, state: { ...this.carry }, spawnX: this.checkpointX });
   }
 
   /* ---------------- etkileşim ---------------- */
@@ -1366,20 +1323,7 @@ class GameScene extends Phaser.Scene {
     if (this.scarfItem && Math.abs(this.scarfItem.x - px) < 50) {
       return { type: 'scarf', obj: this.scarfItem, label: 'ATKIYI AL', x: this.scarfItem.x, y: this.scarfItem.y - 26 };
     }
-    // 0) sürülebilir araba
-    if (this.driveCar && !this.driveCar.started && Math.abs(this.driveCar.x - px) < 110) {
-      if (this.inv.carkey) return { type: 'drivecar', obj: this.driveCar, label: 'ARABAYI ÇALIŞTIR', x: this.driveCar.x, y: this.driveCar.groundY - 90 };
-      return { type: 'drivecar-locked', obj: this.driveCar, label: 'KİLİTLİ — ANAHTAR GEREK', x: this.driveCar.x, y: this.driveCar.groundY - 90 };
-    }
-    // 1) yankesicilik — anahtar taşıyan asker, arkadan, eğilerek
-    for (const s of this.soldiers) {
-      if (s.dead || !s.hasCarKey) continue;
-      const behind = Math.sign(px - s.x) !== s.facing;
-      if (behind && P.crouching && Math.abs(s.x - px) < 62 && s.state === 'patrol') {
-        return { type: 'pickpocket', obj: s, label: 'ANAHTARI ÇAL', x: s.x, y: s.groundY - 100 };
-      }
-    }
-    // 2) alınabilir eşyalar
+    // 1) alınabilir eşyalar
     for (const it of this.physItems) {
       if (it.picked || !it.def.pickable) continue;
       if (Math.abs(it.x - px) < 46 && Math.abs(it.y - py) < 70) {
@@ -1527,45 +1471,17 @@ class GameScene extends Phaser.Scene {
         break;
       }
       case 'battery-swap': this.startBatterySwap(); break;
-      case 'pickpocket': {
-        const s = target.obj;
-        P.mode = 'action';
-        this.rig.startAction('pickpocket', {
-          targetX: s.x - s.facing * 6, targetY: s.groundY - 42,
-          onPhase: (ph) => {
-            if (ph === 'steal') {
-              if (s.state === 'patrol' && !s.dead) {
-                s.hasCarKey = false; s.rig.hasCarKey = false;
-                this.inv.carkey = true;
-                SFAudio.pickup();
-                this.syncHUD();
-              }
-            }
-          },
-          onDone: () => { P.mode = 'idle'; },
-        });
-        break;
-      }
-      case 'drivecar': {
-        const car = target.obj;
-        car.start();
-        P.inCar = true;
-        this.rig.setVisible(false);
-        // motor sesi herkesi uyandırır
-        for (const s of this.soldiers) {
-          if (!s.dead && Math.abs(s.x - car.x) < 900) { s.state = 'alert'; s.suspicion = 1; }
-        }
-        break;
-      }
       case 'crate-locked': SFAudio.thud(0.2); UI.hint('Levye gerekli.', 1500, '✊'); break;
       case 'door-locked': SFAudio.thud(0.25); UI.hint('Anahtar gerekli. Çekmecelere, dolaplara bak.', 1800, '⚿'); break;
       case 'generator-locked': SFAudio.thud(0.2); UI.hint('Pil gerekli.', 1600, '⚡'); break;
-      case 'drivecar-locked': SFAudio.thud(0.25); UI.hint('Kontak anahtarı devriyedeki askerde. Arkasından eğilerek yaklaş.', 2600, '⚿'); break;
     }
   }
 
+  markFound(key) { if (key && this.lootKeys?.has(key)) RunStats.found.add(key); }
+
   collectItem(kind, item) {
     const S = this.state;
+    this.markFound(item?.src);
     if (Missions.collect(this, kind, item)) { this.syncHUD(); return; }
     switch (kind) {
       case 'crowbar': this.inv.crowbar = true; this.rig.holdItem = this.rig.holdItem ?? 'crowbar'; break;
@@ -1603,7 +1519,7 @@ class GameScene extends Phaser.Scene {
           S.batteries--;
           S.flashBattery = 100;
           SFAudio.batterySlot();
-          if (wasOn || this.lights2.darkness > 0.5) {
+          if (!this.flashBlocked && (wasOn || this.lights2.darkness > 0.5)) {
             this.flashOn = true;
             SFAudio.flashClick(true);
           }
@@ -1674,9 +1590,9 @@ class GameScene extends Phaser.Scene {
     this.windSys.update(dt);
     for (const w of this.waters) w.update(dt);
     for (const gn of this.generators) gn.update(dt);
-    if (this.driveCar) this.driveCar.update(dt);
 
     if (this.isIntro) { this.updateIntro(dt, time); return; }
+    if (!this.dead && !this.finished && !this.cineLock) RunStats.time += Math.min(deltaMs, 250) / 1000;
     if (!this.player) return;
 
     const P = this.player;
@@ -1689,7 +1605,6 @@ class GameScene extends Phaser.Scene {
     for (const d of this.doors) { if (d.locked && d.needsKey) d.draw(); }
     for (const lv of this.levers) { if (!lv.pulled) lv.draw(); }
     for (const gn of this.generators) { if (!gn.powered) gn.draw(); }
-    if (this.driveCar && !this.driveCar.started) this.driveCar.draw();
 
     if (this.dead) {
       this.rig.update(dt, { x: 0, y: 0, mode: 'ragdoll', groundY: 0 });
@@ -1747,21 +1662,12 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    /* ---- arabada ---- */
-    if (P.inCar) {
-      MatterLib.Body.setPosition(body, { x: this.driveCar.x, y: this.driveCar.groundY - 70 });
-      MatterLib.Body.setVelocity(body, { x: 0, y: 0 });
-      const cam = this.cameras.main;
-      cam.scrollX = lerp(cam.scrollX, this.driveCar.x + 120 - cam.width / 2, 1 - Math.exp(-dt * 3));
-      this.updateBullets(dt);
-      this.updateEnemies(dt);
-      return;
-    }
-
     /* ---- fener ---- */
     if (Input.flashHit) {
       Input.flashHit = false;
-      if (this.flashOn) {
+      if (this.flashBlocked) {
+        Escapes.echoPulse(this);            // kör dehliz: fener yanmaz, yere vurulur
+      } else if (this.flashOn) {
         this.flashOn = false;
         SFAudio.flashClick(false);
       } else if (S.flashBattery > 0) {
@@ -1850,12 +1756,10 @@ class GameScene extends Phaser.Scene {
         SFAudio.land(impact * 0.6, P.groundMat);
         this.landDust(body.position.x, body.position.y + h / 2, impact * 0.8);
         this.makeNoise(body.position.x, body.position.y, 160 + impact * 120, 0.35);
-        if (impact > 0.97) this.damagePlayer(1, 0);
       } else if (impact > 0.12) {
         this.rig.triggerLand(impact);
         SFAudio.land(impact, P.groundMat);
         if (impact > 0.35) this.makeNoise(body.position.x, body.position.y, 180 + impact * 220, 0.45);
-        if (impact > 0.92) this.damagePlayer(1, 0);
         // sert iniş: dizler yaylanırken kısa toparlanma — insan hemen koşamaz
         if (impact > 0.45) P.landRecover = 0.16 + impact * 0.22;
         // iniş yaylanması: toz bulutu + sert inişte kamera sarsıntısı (ağırlık hissi)
@@ -2044,12 +1948,14 @@ class GameScene extends Phaser.Scene {
         const maxSpeed = (P.crouching ? 1.1 : baseSpeed) * (recovering ? 0.4 : 1);
         let targetVx = dir * maxSpeed;
         if (actionLock) targetVx = 0;
+        /* havada aynı yöne basılıyken sıçrayış hızı korunur (yürüme hızına düşmez) */
+        if (!P.grounded && dir !== 0 && Math.sign(body.velocity.x) === dir && Math.abs(body.velocity.x) > Math.abs(targetVx)) targetVx = body.velocity.x;
         const turning = dir !== 0 && Math.sign(body.velocity.x) === -dir && Math.abs(body.velocity.x) > 1;
         /* AĞIRLIK / MOMENTUM — ivme artık kare-hızından BAĞIMSIZ (dt tabanlı),
            kütle his verir: duruştan kalkış kademeli, durunca momentumla hafif
            süzülür, yön değişiminde önce frenler. Havada momentum büyük ölçüde korunur. */
         let rate;
-        if (!P.grounded) rate = 3.4;                         // havada düşük kontrol — momentum korunur
+        if (!P.grounded) rate = 6;                           // havada yönlendirilebilir — boşluklar kenardan atlanabilsin
         else if (turning) rate = 9.5;                        // fren + dönüş — ayak kaydırır
         else if (dir !== 0) rate = 11;                       // kalkış — kütleyi hızlandırmak zaman alır
         else rate = 13;                                      // durunca biraz süzülür (buz gibi değil)
@@ -2091,7 +1997,10 @@ class GameScene extends Phaser.Scene {
         if (P.jumpNow) {
           P.jumpNow = false;
           const runBoost = Math.abs(body.velocity.x) * 0.22;
-          MatterLib.Body.setVelocity(body, { x: body.velocity.x, y: -11.8 - runBoost });
+          /* yön basılıyken sıçrayış ileri atar: kenarda durup atlayan da ~200px boşluğu geçer */
+          const jdir = (Input.left ? -1 : 0) + (Input.right ? 1 : 0) || (P.teeter ? P.teeter : 0);
+          const jvx = jdir ? jdir * Math.max(Math.abs(body.velocity.x) * (Math.sign(body.velocity.x) === jdir ? 1 : 0), 4.9) : body.velocity.x;
+          MatterLib.Body.setVelocity(body, { x: jvx, y: -11.8 - runBoost });
           P.launchOK = true;
           P.coyote = 0;
           P.jumpedAt = true; P.slip = null;
@@ -2192,15 +2101,19 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    /* ---- dikenler ---- */
+    /* ---- son sağlam zemin: çukura düşünce buraya dönülür ---- */
+    if (P.grounded && !P.hang && !P.mantle && !P.inVehicle) {
+      const fy = body.position.y + h / 2;
+      const lethalNear = (this.ledges ?? []).some(l => l.lethal && Math.abs(l.y - fy) < 14 && Math.abs(l.x - body.position.x) < 40);
+      if (!lethalNear && this.groundSegs.some(g => body.position.x > g.x0 + 30 && body.position.x < g.x1 - 30 && Math.abs(g.y - fy) < 6)) P.safe = { x: body.position.x, y: body.position.y };
+    }
+    /* ---- dikenler / çukur: anında ölüm yok — 1 can gider, son sağlam zemine dönersin ---- */
+    let fell = body.position.y > KILL_Y;
     for (const sp of (this.ch.spikes ?? [])) {
       if (onLedge) break;
-      if (body.position.x > sp.x0 - 4 && body.position.x < sp.x1 + 4 && body.position.y + h / 2 > sp.y - 18) {
-        this.killPlayer(0);
-        return;
-      }
+      if (body.position.x > sp.x0 - 4 && body.position.x < sp.x1 + 4 && body.position.y + h / 2 > sp.y - 18) fell = true;
     }
-    if (body.position.y > KILL_Y) { this.killPlayer(0); return; }
+    if (fell) { this.fallBack(); return; }
 
     /* ---- düşmanlar ---- */
     this.updateEnemies(dt);
@@ -2219,8 +2132,9 @@ class GameScene extends Phaser.Scene {
       }
     }
     for (const cp of (this.ch.checkpoints ?? [])) {
-      if (body.position.x > cp && cp > this.checkpointX) this.checkpointX = cp;
+      if (body.position.x > cp && cp > this.checkpointX && this.groundYAt(cp) < KILL_Y) this.checkpointX = cp;
     }
+    for (const m of this.cpMarks ?? []) if (!m.lit && m.x <= this.checkpointX) this.lightCheckpoint(m, true);
 
     /* ---- bölüm sonu ---- */
     if (body.position.x > this.ch.exitX && !this.finished && !this.cineLock) {
@@ -2276,7 +2190,7 @@ class GameScene extends Phaser.Scene {
     const P = this.player;
     const playerProxy = {
       x: P.body.position.x, y: P.body.position.y, vx: P.body.velocity.x,
-      crouching: P.crouching, hidden: P.hidden || P.inCar,
+      crouching: P.crouching, hidden: P.hidden || P.inCar, flashOn: this.flashOn,
       noisy: P.grounded && Math.abs(P.body.velocity.x) > 3.1 && !P.crouching,   // koşu adımları duyulur
     };
     let tension = Math.max(0, 1 - this.hp / this.hpMax) * 0.4;
@@ -2289,8 +2203,8 @@ class GameScene extends Phaser.Scene {
     for (const c of this.creatures) {
       c.update(dt, playerProxy);
       if (c.dead) continue;
-      if (['chase', 'strike', 'charge', 'lunge', 'hunt', 'smash', 'recover'].includes(c.state)) tension = Math.max(tension, 1);
-      else if (['alert', 'stare', 'rear', 'stun'].includes(c.state)) tension = Math.max(tension, 0.7);
+      if (['chase', 'strike', 'charge', 'lunge', 'hunt', 'smash', 'recover', 'bite'].includes(c.state)) tension = Math.max(tension, 1);
+      else if (['alert', 'stare', 'rear', 'stun', 'wake', 'cool'].includes(c.state)) tension = Math.max(tension, 0.7);
     }
     const tens = this.cineLock ? 0 : tension;
     SFAudio.setTension(tens);
@@ -2312,9 +2226,9 @@ class GameScene extends Phaser.Scene {
     const collapseOn = (M.collapses ?? []).some(c => c.fired && now - (c._firedAt ?? (c._firedAt = now)) < 4);
     if (P.inVehicle || P.inCar) st = 'vehicle';
     else if (M.bomb && !M.bomb.done && !M.bomb.exploded) st = 'bomb';
-    else if (fireOn || floodOn || M.colossus?.active || chaseOn || collapseOn) st = 'escape';
+    else if (fireOn || floodOn || M.colossus?.active || chaseOn || collapseOn || Escapes.escaping(this)) st = 'escape';
     else if (tens >= 0.85) st = 'action';
-    else if (tens >= 0.45) st = 'stealth';
+    else if (tens >= 0.45 || M.echo?.inside) st = 'stealth';
     else if ((this.pz ?? []).some(p => !(p.raised || p.done || p.solved) && Math.abs(px - (p.hintX ?? p.x0 ?? 0) - 250) < 420)) st = 'puzzle';
     else if (this.inBld || this.ch.interior) st = 'interior';
     SFMusic.setIntensity(tens);
@@ -2323,7 +2237,7 @@ class GameScene extends Phaser.Scene {
 
   completeChapter() {
     this.finished = true;
-    const nextState = this.playAs === 'maria' ? { ...this.kaiCarry } : {
+    const nextState = {
       scarf: true,
       crowbar: this.inv.crowbar,
       bandages: this.state.bandages,
@@ -2339,7 +2253,10 @@ class GameScene extends Phaser.Scene {
     UI.fadeOut(2000);
     this.time.delayedCall(2300, () => {
       if (this.levelId + 1 <= LEVEL_COUNT) {
-        this.scene.restart({ level: this.levelId + 1, state: nextState });
+        UI.showSummary(this.ch, {
+          time: RunStats.time, deaths: RunStats.deaths,
+          found: RunStats.found.size, total: this.lootKeys?.size ?? 0,
+        }, () => this.scene.restart({ level: this.levelId + 1, state: nextState }));
       } else {
         UI.showEndCard();
       }
@@ -2367,7 +2284,7 @@ class GameScene extends Phaser.Scene {
 
     if (kind === 'final') {
       /* SON BÖLÜM — Maria yarığın en dibinde, ışığın önünde diz çökmüş.
-         Oyunun yarığa düşüşten sonraki tek konuşma sahnesi. */
+         Sözsüz: Maria koşup sarılır, ışık her şeyi kaplar. */
       C.actors.maria = { rig: new HumanRig(this, { scale: 0.88, depth: 99, variant: 'maria' }), x: px + 420, facing: -1, vx: 0, pose: 'kneel', visible: true };
       this.gateLight = this.lights2.addLight({ x: px + 700, y: gY - 200, r: 120, type: 'halo', intensity: 0.6 });
       C.timeline = [
@@ -2376,10 +2293,8 @@ class GameScene extends Phaser.Scene {
             this.lights2.setDarkness(0.25, 6000);
         }},
         { t: 3.2, fn: () => { C.actors.maria.pose = 'standSad'; } },
-        { t: 4.4, fn: () => { C.actors.maria.pose = null; C.actors.maria.vx = -120; C.actors.maria.facing = -1; UI.subtitle('Maria: "Kai!"', 2200); } },
+        { t: 4.4, fn: () => { C.actors.maria.pose = null; C.actors.maria.vx = -120; C.actors.maria.facing = -1; } },
         { t: 7.0, fn: () => { C.actors.maria.vx = 0; C.actors.maria.pose = 'hug'; C.kaiPose = 'hug'; SFAudio.playHopeMotif(); } },
-        { t: 8.4, fn: () => UI.subtitle('Maria: "Peşimden atladın."', 2800) },
-        { t: 11.4, fn: () => UI.subtitle('"Atladım. Yine atlarım."', 3000) },
         { t: 15.5, fn: () => { this.fx.flash.setFillStyle?.(0xE8E4DC); this.tweens.add({ targets: this.fx.flash, alpha: 1, duration: 4200 }); } },
         { t: 20.0, fn: () => UI.showEnding() },
       ];
@@ -2570,7 +2485,6 @@ class GameScene extends Phaser.Scene {
           this.fogOverlay.fillColor = 0x010103;
           this.tweens.add({ targets: this.fogOverlay, fillAlpha: 1, duration: 700 });
       }},
-      { t: 17.2, fn: () => UI.showChapterCard({ id: 0, name: 'YARIK', sub: 'yarığın dibi' }) },
       { t: 20.2, fn: () => this.endIntro() },
     ];
   }
@@ -2669,9 +2583,18 @@ const UI = {
     $('m-privacy').onclick = () => { this.hide('menu'); this.show('privacy-panel'); };
     $('privacy-back').onclick = () => { this.hide('privacy-panel'); this.show('menu'); };
 
-    $('opt-vol').oninput = (e) => { SF_SETTINGS.vol = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); };
-    $('opt-music').oninput = (e) => { SF_SETTINGS.music = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); };
-    $('opt-grain').oninput = (e) => { SF_SETTINGS.grain = e.target.value / 100; };
+    /* ayarlar: kaydedilen değerlerle açılır, her değişiklikte kaydedilir */
+    $('opt-vol').value = SF_SETTINGS.vol * 100;
+    $('opt-music').value = SF_SETTINGS.music * 100;
+    $('opt-grain').value = SF_SETTINGS.grain * 100;
+    $('opt-sens').value = SF_SETTINGS.sens * 100;
+    const vibeLabel = () => { $('opt-vibe').textContent = SF_SETTINGS.vibe ? 'AÇIK' : 'KAPALI'; $('opt-vibe').classList.toggle('off', !SF_SETTINGS.vibe); };
+    vibeLabel();
+    $('opt-vol').oninput = (e) => { SF_SETTINGS.vol = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); saveSettings(); };
+    $('opt-music').oninput = (e) => { SF_SETTINGS.music = e.target.value / 100; SFAudio.setVol(SF_SETTINGS.vol, SF_SETTINGS.music); saveSettings(); };
+    $('opt-grain').oninput = (e) => { SF_SETTINGS.grain = e.target.value / 100; saveSettings(); };
+    $('opt-sens').oninput = (e) => { SF_SETTINGS.sens = e.target.value / 100; saveSettings(); };
+    $('opt-vibe').onclick = () => { SF_SETTINGS.vibe = !SF_SETTINGS.vibe; vibeLabel(); saveSettings(); SFVibrate(30); };
 
     $('pause-btn').onclick = () => this.pause();
     $('skip-btn').onclick = () => { SFAudio.resume(); this.scene()?.requestSkip(); };
@@ -2745,7 +2668,7 @@ const UI = {
         Input.act = true; Input.grab = true;
         trail.classList.add('hold');
         this.scene()?.handleHold?.(p.x, p.y);
-        try { navigator.vibrate?.(15); } catch (_) {}
+        SFVibrate(15);
       }, 300);
       pts.set(e.pointerId, p);
       placeTrail(e.clientX, e.clientY); trail.classList.add('on');
@@ -2762,8 +2685,11 @@ const UI = {
       placeTrail(p.x, p.y);
       const old = p.hist.length > 1 ? p.hist[0] : p.hist[p.hist.length - 1], dtm = Math.max(16, now - old.t);
       const vy = (p.y - old.y) / dtm * 1000;
+      /* hassasiyet: yüksekse daha kısa / yavaş bir fırlatma ve kaydırma yeter */
+      const k = clamp(SF_SETTINGS.sens ?? 1, 0.5, 1.5);
+      const vFast = 600 / k, vSlow = 280 / k, dShort = 28 / k, dLong = 58 / k;
       /* yukarı fırlatma = zıpla */
-      if (((vy < -600 && old.y - p.y > 28) || (vy < -280 && old.y - p.y > 58)) && !p.jumpLock) {
+      if (((vy < -vFast && old.y - p.y > dShort) || (vy < -vSlow && old.y - p.y > dLong)) && !p.jumpLock) {
         p.jumpLock = true;
         Input.jumpHit = true; Input.jump = true;
         clearTimeout(p.jumpRel);
@@ -2772,24 +2698,24 @@ const UI = {
         this.scene()?.cancelAutoWalk?.();
       } else if (vy > -200) p.jumpLock = false;
       /* aşağı fırlatma = eğil / kay */
-      if (((vy > 600 && p.y - old.y > 28) || (vy > 280 && p.y - old.y > 58)) && !p.downLock) {
+      if (((vy > vFast && p.y - old.y > dShort) || (vy > vSlow && p.y - old.y > dLong)) && !p.downLock) {
         p.downLock = true;
         Input.crouchPulse = 0.4;
         p.ay = p.y;
       } else if (vy < 200) p.downLock = false;
       /* yatay kaydırma = yürü / koş */
       const dx = p.x - p.ax;
-      if ((movePid === null || movePid === e.pointerId) && Math.abs(dx) > 16 && p.role !== 'tapOnly') {
+      if ((movePid === null || movePid === e.pointerId) && Math.abs(dx) > 16 / k && p.role !== 'tapOnly') {
         if (movePid === null) { movePid = e.pointerId; if (p.role !== 'hold') p.role = 'move'; this.scene()?.cancelAutoWalk?.(); }
       }
       if (movePid === e.pointerId) {
-        const R = 120;
+        const R = 120 / k;
         if (Math.abs(dx) > R * 1.25) p.ax = p.x - Math.sign(dx) * R * 1.25;     // çapa parmağı izler → anında geri dönüş
         const ndx = (p.x - p.ax) / R;
         Input.left = ndx < -0.13; Input.right = ndx > 0.13;
         Input.stick = (Input.left || Input.right) ? clamp(Math.abs(ndx), 0, 1) : null;
-        Input.crouch = (p.y - p.ay) > 60;
-        Input.up = (p.ay - p.y) > 60;
+        Input.crouch = (p.y - p.ay) > 60 / k;
+        Input.up = (p.ay - p.y) > 60 / k;
         anchorEl.style.left = p.ax + 'px'; anchorEl.style.top = p.ay + 'px'; anchorEl.classList.add('on');
       }
     });
@@ -2846,7 +2772,7 @@ const UI = {
         pr?.then?.(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
       } catch (_) {}
     }
-    this.hide('menu'); this.hide('chapters-panel'); this.hide('death-panel'); this.hide('ending-panel');
+    this.hide('menu'); this.hide('chapters-panel'); this.hide('death-panel'); this.hide('ending-panel'); this.hide('summary-panel');
     this.el('hint-card')?.classList.remove('show');
     this.el('fader').classList.remove('clear');
     if (!this.game) {
@@ -2882,7 +2808,7 @@ const UI = {
   },
 
   toMenu() {
-    this.hide('pause-panel'); this.hide('death-panel'); this.hide('ending-panel');
+    this.hide('pause-panel'); this.hide('death-panel'); this.hide('ending-panel'); this.hide('summary-panel');
     this.showHUD(false);
     this.showSkip(false);
     this.el('pause-btn').style.display = 'none';
@@ -2891,6 +2817,7 @@ const UI = {
     if (this.game) this.game.scene.stop('game');
     if (SaveGame.load().current) this.el('m-continue').style.display = '';
     this.show('menu');
+    this.fadeIn();                      // bölüm sonu karartmasından dönüldüyse menü görünsün
   },
 
   pause() {
@@ -3076,12 +3003,13 @@ const UI = {
     const c = this.el('tut-card');
     if (!c) return;
     if (!key) { c.classList.remove('show'); return; }
+    /* YAZISIZ: yalnız sembol + (klavyede) tuş, dokunmatikte hareket işareti */
     const icons = { move: '⟷', jump: '⤒', crouch: '⤓', act: '☝', pry: '✊', push: '⇥', flash: '✦', run: '»' };
-    const text = key === 'pry' ? (IS_TOUCH ? 'Kutuya basılı tut: levyeyle aç.' : 'Kutunun yanında [E] basılı tut: levyeyle aç.')
-      : key === 'run' ? (IS_TOUCH ? 'Parmağını daha uzağa kaydır: KOŞ!' : '[Shift] basılı tut: KOŞ!')
-      : UI_HINT(key);
+    const keys = IS_TOUCH
+      ? { move: '☜  ☞', jump: '⇡', crouch: '⇣', act: '☝', pry: '☝ ⋯', push: '☝ ⋯ ⇥', flash: '☝ ✦', run: '⟹' }
+      : { move: 'A  D', jump: 'W', crouch: 'S', act: 'E', pry: 'E ⋯', push: 'E ⋯ ⇥', flash: 'F', run: '⇧ Shift' };
     c.querySelector('.ico').textContent = icons[key] ?? '•';
-    c.querySelector('.txt').textContent = text;
+    c.querySelector('.txt').textContent = keys[key] ?? '';
     c.classList.remove('done');
     c.classList.add('show');
   },
@@ -3113,7 +3041,6 @@ const UI = {
   updateInv(inv, state) {
     this.el('inv-crowbar').classList.toggle('show', !!inv.crowbar);
     this.el('inv-key').classList.toggle('show', !!inv.key);
-    this.el('inv-carkey').classList.toggle('show', !!inv.carkey);
     // bandaj
     const bd = this.el('cnt-bandage');
     bd.style.display = state.bandages > 0 ? 'flex' : 'none';
@@ -3164,8 +3091,10 @@ const UI = {
   hint(text, ms = 2600, icon = '•') {
     const c = this.el('hint-card');
     if (!c || !text) return;
+    /* YAZISIZ: ipucu kartında yalnız sembol kalır (metin ekran okuyucu için saklanır) */
     c.querySelector('.ico').textContent = icon;
-    c.querySelector('.txt').textContent = text;
+    c.querySelector('.txt').textContent = '';
+    c.setAttribute('aria-label', text);
     c.classList.add('show');
     clearTimeout(this._hintTimer);
     this._hintTimer = setTimeout(() => c.classList.remove('show'), ms);
@@ -3209,6 +3138,20 @@ const UI = {
     SaveGame.unlock(LEVEL_COUNT);
   },
 
+  /* ---- BÖLÜM SONU ÖZETİ ---- */
+  showSummary(ch, st, onNext) {
+    const $ = (id) => this.el(id);
+    const sec = Math.round(st.time);
+    $('sum-title').textContent = `BÖLÜM ${ch.id}`;
+    $('sum-name').textContent = ch.name + (ch.sub ? ' — ' + ch.sub : '');
+    $('sum-time').textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+    $('sum-deaths').textContent = st.deaths;
+    $('sum-found').textContent = st.total ? `${st.found} / ${st.total}` : '—';
+    this.show('summary-panel');
+    $('sum-next').onclick = () => { this.hide('summary-panel'); onNext(); };
+    $('sum-menu').onclick = () => { this.hide('summary-panel'); this.toMenu(); };
+  },
+
   showDeath() {
     this.el('death-text').textContent = this._deathOverride ?? DEATH_LINES[Math.floor(Math.random() * DEATH_LINES.length)];
     this._deathOverride = null;
@@ -3227,6 +3170,7 @@ const UI = {
    true: oyun işledi (duraklat / panel kapat), false: uygulamadan çık */
 window.SFBack = () => {
   const vis = (id) => UI.el(id)?.classList.contains('visible');
+  if (vis('summary-panel')) { UI.el('sum-next').click(); return true; }
   for (const id of ['chapters-panel', 'options-panel', 'privacy-panel']) {
     if (vis(id)) { UI.hide(id); UI.show('menu'); return true; }
   }

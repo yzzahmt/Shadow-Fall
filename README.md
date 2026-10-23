@@ -15,13 +15,17 @@ The ground splits open on an evening walk, Maria falls into the fissure and Kai 
   (hospital, foundry, water treatment plant, barracks, library...). Indoors only the interior is visible.
 - **Six creature types** with different senses: root stalker, hound, lurker, blind crawler (hears vibration),
   wraith (only stopped by light), brute (charges until it hits a wall). Chases span the whole reachable area.
+- **Escapes** — a failing mine elevator under falling rock, a last train racing toward a broken bridge,
+  and a pitch-black tunnel crossed by echo alone (knock the ground, listen for dripping pits).
 - **Systemic wildfire** — lightning ignites a tree, fire spreads from tree to grass along the wind, embers start
   spot fires, burning trees fall.
 - **Adaptive score** — 18 procedurally synthesised but composed pieces (per-act exploration themes, interior,
   stealth, puzzle, chase, escape, vehicle, bomb) cross-faded by a music director.
 - **Hiding places, not loot boxes** — drawers, wardrobes, first-aid cabinets, lockers, tree hollows, glove boxes...
   Bandages only come from medical places.
-- Skeletal IK character animation, dynamic 2D lighting, gesture-only touch controls, fully offline.
+- Lantern checkpoints, a chapter summary (time, deaths, items found) and per-act ambient soundscapes.
+- Skeletal IK character animation, dynamic 2D lighting, gesture-only touch controls with adjustable
+  sensitivity, fully offline.
 
 ## Tech
 
@@ -40,6 +44,7 @@ js/
   puzzles.js        canal / hydraulic / pulley / pressure / photocell / timed-gate puzzles
   buildings.js      houses, multi-chapter interiors, stairs, interior visibility
   missions.js       set pieces: wildfire, flood, colossus, vehicle escapes, bomb
+  escapes.js        elevator, train and echo-location escapes
   creatures.js      creature and soldier AI
   human.js          IK character rig and animation
   items.js          physics items, hiding places, doors, levers, ladders
@@ -57,7 +62,7 @@ docs/               privacy policy, Play Store release kit
 
 ```bash
 npm install
-npm run serve            # http://localhost:8765
+npm run serve            # http://localhost:8765  (add ?unlockall to open every chapter)
 npm test                 # generate and validate all 100 chapters
 npm run test:play        # scripted gameplay checks in headless Chrome
 npm run android:sync     # build www/ and copy into the Android project
