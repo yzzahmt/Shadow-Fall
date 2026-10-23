@@ -1876,6 +1876,20 @@ class GameScene extends Phaser.Scene {
     else if (!P.grounded && !P.climbing && !P.swimming && !P.inVehicle && !P.stair) this.tryGrabLedge(dt);
     const onLedge = !!(P.hang || P.mantle);
 
+    /* ---- DUVARA TUTUNMA: havada, baş hizasına kadar yükselen bir duvara doğru basılıyken
+       avuçlar duvara yapışır, yavaşça kayarsın. Duvardan sıçrama yok (bulmaca duvarları aşılmasın). */
+    P.wallSlide = null;
+    if (!onLedge && !P.grounded && P.coyote <= 0 && !P.climbing && !P.swimming && !P.inVehicle && !P.stair && dir !== 0 && body.velocity.y > 0.5) {
+      const top = body.position.y - h / 2;
+      const hit = MatterLib.Query.region(MatterLib.Composite.allBodies(this.matter.world.localWorld), {
+        min: { x: body.position.x + (dir > 0 ? 8 : -16), y: top + 4 }, max: { x: body.position.x + (dir > 0 ? 16 : -8), y: top + 22 },
+      }).filter(b => b.isStatic && !b.isSensor && b !== body && !b.sfItem);
+      if (hit.length) {
+        P.wallSlide = { side: dir, x: dir > 0 ? Math.min(...hit.map(b => b.bounds.min.x)) : Math.max(...hit.map(b => b.bounds.max.x)) };
+        if (body.velocity.y > 2.2) MatterLib.Body.setVelocity(body, { x: body.velocity.x, y: 2.2 });
+      }
+    }
+
     if (dir !== 0 && !this.rig.actionActive && !onLedge) P.facing = dir;
 
     /* ---- yuvarlanma (sert iniş) ---- */
@@ -2043,7 +2057,10 @@ class GameScene extends Phaser.Scene {
         if (Math.abs(bdx) < pb.w / 2 + 30 && Math.abs(pb.body.position.y - body.position.y) < pb.h / 2 + 8) { P.grabbing = pb; P.grabSide = Math.sign(bdx); break; }
       }
       if (P.grabbing) {
-        const vx = clamp(body.velocity.x, -1.5, 1.5);
+        /* ağır kutu yavaş gider: eskiden yürüyüş hızındaydı (1.5), kutu uçuyor gibiydi.
+           Ağırlık 1-2-3 → 0.9 / 0.7 / 0.55; çekerken (geri geri) biraz daha yavaş */
+        const lim = ([0, 0.9, 0.7, 0.55][P.grabbing.weight] ?? 0.6) * (Math.sign(body.velocity.x) === -P.grabSide ? 0.8 : 1);
+        const vx = clamp(body.velocity.x, -lim, lim);
         MatterLib.Body.setVelocity(body, { x: vx, y: body.velocity.y });
         MatterLib.Body.setVelocity(P.grabbing.body, { x: vx, y: P.grabbing.body.velocity.y });
         P.facing = P.grabSide;
@@ -2153,6 +2170,7 @@ class GameScene extends Phaser.Scene {
     else if (P.mode === 'pry') mode = 'pry';
     else if (P.climbing) mode = 'climb';
     else if (P.swimming) mode = 'swim';
+    else if (P.wallSlide) mode = 'wall';
     else if (!P.grounded && P.coyote <= 0) mode = 'air';
     else if (P.slideT > 0) mode = 'slide';
     else if (P.crouching) mode = 'crawl';
@@ -2174,6 +2192,7 @@ class GameScene extends Phaser.Scene {
       mantleP: P.mantle ? P.mantle.p : 0,
       rollP: P.rollT > 0 ? 1 - P.rollT / 0.52 : 0,
       edgeX: P.teeter ? P.teeterX : null,
+      wallX: P.wallSlide ? P.wallSlide.x : null,
       stair: P.stair ? P.stair.s : null,
     });
 

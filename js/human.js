@@ -356,6 +356,7 @@ class HumanRig {
     this.mantleP = state.mantleP ?? 0;
     this.rollP = state.rollP ?? 0;
     if (state.edgeX != null) this.edgeX = state.edgeX;
+    if (state.wallX != null) this.wallX = state.wallX;
     this.stair = state.stair ?? null;
 
     /* POZ GEÇİŞİ — mod veya yön değişince eski iskelet 0.15–0.2 sn içinde yenisine
@@ -381,7 +382,7 @@ class HumanRig {
     if (this.mode === 'ragdoll') return 'ragdoll';
     if (this.action) return 'act:' + this.action.name;
     if (this.mode === 'pose') return 'pose:' + this.poseName;
-    if (['crawl', 'slide', 'swim', 'climb', 'hang', 'mantle', 'teeter', 'roll', 'stairs'].includes(this.mode)) return this.mode;
+    if (['crawl', 'slide', 'swim', 'climb', 'hang', 'mantle', 'teeter', 'roll', 'stairs', 'wall'].includes(this.mode)) return this.mode;
     return 'stand';
   }
 
@@ -464,6 +465,7 @@ class HumanRig {
     if (this.mode === 'hang') return this.drawHang();
     if (this.mode === 'mantle') return this.drawMantle();
     if (this.mode === 'teeter') return this.drawTeeter();
+    if (this.mode === 'wall') return this.drawWall();
     if (this.mode === 'roll') return this.drawRoll();
     this.drawStanding();
   }
@@ -491,6 +493,32 @@ class HumanRig {
     this._setJoints(J, pelvis, neck, head, legL, legR, armL, armRr);
     J.footL.ang = 0.9; J.footR.ang = 0.2;
     this.render(J, 0);
+  }
+
+  /* ============ DUVARA TUTUNMA (duvar boyunca kayma) ============
+     Erişilemeyen yüksek duvara zıplayınca: iki avuç duvara yapışık, biri yukarıda;
+     bir diz kırılıp ayak tabanı duvara basar, öbür bacak sarkar. Gövde duvara
+     dönük, baş yukarı — tutunacak yer arar. */
+  drawWall() {
+    const A = this.A, J = this.joints, s = this.s, f = this.facing;
+    const wx = this.wallX ?? (this.x + f * 10 * s);
+    const legLen = A.legUp + A.legLo, armR = A.armUp + A.armLo;
+    const rub = Math.sin(this.breathe * 9) * 1.2 * s;           // kayarken eller duvarı sürter
+    const pelvis = { x: wx - f * 11 * s, y: this.y + 4 * s };
+    const lean = f * 0.12;
+    const neck = { x: pelvis.x + Math.sin(lean) * A.torso, y: pelvis.y - Math.cos(lean) * A.torso };
+    const head = { x: neck.x + f * A.headR * 0.3, y: neck.y - A.headR * 1.45 };
+    const hL = { x: wx - f * 1 * s, y: neck.y - armR * 0.55 + rub };   // üst el
+    const hR = { x: wx - f * 1 * s, y: neck.y + armR * 0.05 - rub };   // alt el, omuz hizası
+    const armL = solveIK2(neck.x - A.shW * 0.35 * f, neck.y, hL.x, hL.y, A.armUp, A.armLo, f > 0 ? -1 : 1);   // dirsekler duvardan dışa
+    const armRr = solveIK2(neck.x + A.shW * 0.35 * f, neck.y, hR.x, hR.y, A.armUp, A.armLo, f > 0 ? 1 : -1);
+    const footF = { x: wx - f * 2 * s, y: pelvis.y + legLen * 0.6 };   // duvara basan ayak
+    const footB = { x: pelvis.x - f * 4 * s, y: pelvis.y + legLen * 0.95 };
+    const legF = solveIK2(pelvis.x + A.hipW * 0.3 * f, pelvis.y, footF.x, footF.y, A.legUp, A.legLo, f > 0 ? 1 : -1);    // diz yukarı, duvara girmez
+    const legB = solveIK2(pelvis.x - A.hipW * 0.3 * f, pelvis.y, footB.x, footB.y, A.legUp, A.legLo, f > 0 ? -1 : 1);
+    this._setJoints(J, pelvis, neck, head, legB, legF, armL, armRr);
+    J.footR.ang = -f * 1.2; J.footL.ang = 0.6;
+    this.render(J, lean);
   }
 
   /* ============ KENARDAN YUKARI ÇIKMA (mantle) ============
@@ -639,7 +667,7 @@ class HumanRig {
     if (skid) lean = f * 0.28 * skid;                         // fren: geriye (yeni yöne) yaslan
     if (this.grounded && this.landImpact > 0.04) lean += f * 0.42 * this.landImpact;   // iniş: gövde öne katlanır, dizler yükü alır
     if (this.grounded && this.prepT > 0) lean += f * 0.32;                              // sıçrama hazırlığı
-    if (this.mode === 'push') lean = f * 0.55;
+    if (this.mode === 'push') lean = (Math.sign(this.vx) === -f && Math.abs(this.vx) > 6) ? -f * 0.3 : f * 0.55;   // çekerken geriye yaslan
     const postureCurve = fem ? -f * 0.05 : f * 0.02;
 
     const torsoLen = A.torso * (1 - crouch * 0.2);

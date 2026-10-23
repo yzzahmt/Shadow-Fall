@@ -375,6 +375,48 @@ const CASES = {
       return sc.hp === sc.hpMax - 1 ? true : `fell more than once (hp ${sc.hp}/${sc.hpMax})`;
     });
   },
+  /* tutulan kutu yürüyüş hızında uçmaz: ağırlığa göre yavaş itilir / çekilir */
+  async boxGrabSpeed(page) {
+    return page.evaluate(async () => {
+      const sc = await H.start(2);
+      const pb = sc.pushboxes[0];
+      if (!pb) return 'no box';
+      H.tp(sc, pb.body.position.x - pb.w / 2 - 14, pb.body.bounds.max.y - 31);
+      await H.frames(20);
+      Input.act = true; Input.right = true;
+      await H.frames(40);
+      const push = Math.abs(pb.body.velocity.x);
+      Input.right = false; Input.left = true;
+      await H.frames(40);
+      const pull = Math.abs(pb.body.velocity.x);
+      Input.act = false; Input.left = false;
+      if (!(push > 0.3 && push < 1)) return `push speed ${push.toFixed(2)} (weight ${pb.weight})`;
+      if (!(pull > 0.2 && pull <= push)) return `pull speed ${pull.toFixed(2)} vs push ${push.toFixed(2)}`;
+      return true;
+    });
+  },
+  /* yüksek duvara zıplayınca eller duvara yapışır, yavaş kayar (duvardan sıçrama yok) */
+  async wallSlide(page) {
+    return page.evaluate(async () => {
+      const sc = await H.start(4);
+      const wd = (sc.ch.walls ?? []).find(v => v.y1 >= 598 && v.y0 < 400);
+      const w = wd && sc.matter.world.localWorld.bodies.find(o => o.isStatic && Math.abs(o.position.x - wd.x) < 20 && o.bounds.min.y < 420 && o.bounds.max.y > 590);
+      if (!w) return 'no wall';
+      H.tp(sc, w.bounds.min.x - 40, 569);
+      await H.frames(20);
+      Input.right = true; Input.jump = true; Input.jumpHit = true;
+      await H.frames(8); Input.jump = false;
+      let seen = false, maxVy = 0;
+      for (let i = 0; i < 120; i++) {
+        await H.frames(1);
+        if (sc.player.wallSlide) { seen = true; maxVy = Math.max(maxVy, sc.player.body.velocity.y); if (sc.rig.mode !== 'wall') { Input.right = false; return 'rig not in wall pose'; } }
+        if (sc.player.grounded && seen) break;
+      }
+      Input.right = false;
+      if (!seen) return `never clung to the wall (wall x${w.bounds.min.x | 0} y${w.bounds.min.y | 0}-${w.bounds.max.y | 0} player x${sc.player.body.position.x | 0} y${sc.player.body.position.y | 0})`;
+      return maxVy <= 2.6 ? true : `slid too fast (vy ${maxVy.toFixed(2)})`;
+    });
+  },
   /* köprüler çoğunlukla sağlam: bölüm başına en fazla bir çöken köprü */
   async bridgeCount(page) {
     return page.evaluate(async () => {

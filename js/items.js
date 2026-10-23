@@ -366,6 +366,7 @@ class Crate {
    çantası, ağaç kovuğu, araç torpidosu, posta kutusu, çöp kutusu, sandık,
    cephane kutusu, havalandırma ızgarası. Bandaj yalnız "tıbbi" saklama
    yerlerinden çıkar (çekmece, dolap, ilk yardım, çanta, sandık...).
+   Pil / şarjör ağaç kovuğundan çıkmaz (noGear).
    İçindekiler doğrudan envantere geçer; boş olanlar da vardır. */
 const CONTAINER_DEFS = {
   drawer:   { label: 'ÇEKMECEYİ AÇ',       w: 56, h: 52, med: true,  reach: 'low' },
@@ -376,7 +377,7 @@ const CONTAINER_DEFS = {
   toolbox:  { label: 'ALET ÇANTASINI AÇ',  w: 40, h: 20, med: false, reach: 'low' },
   fridge:   { label: 'BUZDOLABINI AÇ',     w: 46, h: 104, med: false, reach: 'mid' },
   backpack: { label: 'ÇANTAYI KARIŞTIR',   w: 26, h: 22, med: true,  reach: 'low' },
-  hollow:   { label: 'KOVUĞA BAK',         w: 34, h: 170, med: false, reach: 'mid', mountY: 64 },
+  hollow:   { label: 'KOVUĞA BAK',         w: 34, h: 170, med: false, reach: 'mid', mountY: 64, noGear: true },
   glovebox: { label: 'TORPİDOYU AÇ',       w: 18, h: 10, med: false, reach: 'mid', mountY: 34 },
   mailbox:  { label: 'POSTA KUTUSUNA BAK', w: 24, h: 92, med: false, reach: 'mid', mountY: 80 },
   trash:    { label: 'ÇÖPÜ KARIŞTIR',      w: 34, h: 46, med: false, reach: 'low' },

@@ -47,6 +47,7 @@ for (let n = 1; n <= 100; n++) {
   for (const c of L.containers) {
     if (!CONTAINER_DEFS[c.kind]) fail(n, 'unknown container ' + c.kind);
     else if (c.contents.includes('bandage') && !CONTAINER_DEFS[c.kind].med) fail(n, `bandage in non-medical ${c.kind}`);
+    else if (CONTAINER_DEFS[c.kind].noGear && c.contents.some(k => k === 'battery' || k === 'mag')) fail(n, `${c.contents.join('+')} inside a ${c.kind}`);
     stats.containers[c.kind] = (stats.containers[c.kind] ?? 0) + 1;
   }
   const bandages = L.containers.reduce((a, c) => a + c.contents.filter(k => k === 'bandage').length, 0);

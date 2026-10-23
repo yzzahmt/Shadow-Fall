@@ -646,15 +646,16 @@ function distributeLoot(L, o) {
       stash(k, p.x, p.y, [b]);
     }
   }
-  /* pil + şarjör: saklama yerleri ve kutular */
-  const bins = shuffle([...open.filter(c => c.contents.length < 2), ...L.crates.filter(c => !c.fixed)]);
+  /* pil + şarjör: saklama yerleri ve kutular (ağaç kovuğuna konmaz) */
+  const noGear = (k) => CONTAINER_DEFS[k]?.noGear;
+  const bins = shuffle([...open.filter(c => c.contents.length < 2 && !noGear(c.kind)), ...L.crates.filter(c => !c.fixed)]);
   let gi = 0;
   for (const it of gear) {
     const target = bins.filter(c => c.contents.length < 2).sort((a, c) => a.contents.length - c.contents.length)[0];
     if (target && rng() < 0.85) target.contents.push(it);
     else {
       const p = safeSpot(gi++, gear.length);
-      const pool = extraKinds ?? ['locker', 'toolbox'];
+      const pool = (extraKinds ?? ['locker', 'toolbox']).filter(k => !noGear(k));
       stash(pool[Math.floor(rng() * pool.length)], p.x, p.y, [it]);
     }
   }

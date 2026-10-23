@@ -58,6 +58,24 @@ KALDIĞIMIZ YER — 23 Ekim 2026
       bridgeCount (bölüm başına en fazla 1 çöken köprü).
   [x] .aab ve debug APK bu düzeltmelerle yeniden derlendi.
 
+  EŞYA / KUTU / DUVAR (23 Ekim, gece):
+  [x] Ağaç kovuğundan pil / şarjör çıkmıyor (eskiden 13 bölümde 37
+      kovukta vardı). Kovuk artık boş ya da başka eşya; pil ve şarjör
+      alet çantası, dolap, sandık gibi yerlerde. (items.js → noGear)
+      Testle 100 bölümde doğrulanıyor.
+  [x] Kutu tutunca aşırı hızlı gitmesi: tutulan kutu yürüyüş hızındaydı
+      (1.5), kutu uçuyor gibiydi. Artık ağırlığa göre: küçük 0.9, orta
+      0.7, büyük 0.55; çekerken %20 daha yavaş. Çekerken karakter
+      geriye yaslanıyor (itmede öne).
+  [x] DUVARA TUTUNMA animasyonu: erişilemeyen yüksek duvara zıplayıp
+      duvara doğru basılı tutunca avuçlar duvara yapışır, bir ayak
+      duvara basar, karakter yavaşça aşağı kayar. Duvardan sıçrama YOK
+      (bulmaca duvarları aşılmasın). (main.js → wallSlide,
+      human.js → drawWall)
+  [x] Yeni testler: boxGrabSpeed, wallSlide.
+  [ ] Telefonda dene: kutu tutma (parmağı kutunun yanında 0.3 sn basılı
+      tut, sonra kaydır) ve duvara tutunma hissi.
+
 SIRADA (yapılacaklar):
   [ ] Oyunu GÜNCEL klasörden aç ve dene; yeni sembollere bak.
   [ ] Telefonu USB ile bağla (geliştirici seçenekleri → USB hata
