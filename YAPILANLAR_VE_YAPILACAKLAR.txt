@@ -1,48 +1,45 @@
 ================================================================
  SHADOW FALL — v1.1.0 GELİŞTİRME NOTU
- Yapılanlar ve yapılacaklar · 16 Ekim 2026
+ Yapılanlar ve yapılacaklar · 23 Ekim 2026
  (Ayrıntılı oyun dokümanı: OYUN_NOTLARI.txt)
 ================================================================
 
 
-KALDIĞIMIZ YER — 16 Ekim 2026 akşamı
+KALDIĞIMIZ YER — 23 Ekim 2026
 ----------------------------------------------------------------
-!! DOĞRU OYUNU AÇ: Boss gördüysen eski yedeği açıyorsun
-   (~/ShadowFall_yedek_v5 — v5, boss'lu). Güncel oyun bu klasörde.
-   Çalıştır:  cd ~/Documents/Projeler/Shadow-Fall && npm run serve
+!! DOĞRU OYUNU AÇ: Eski boss'lu yedeğin adı artık
+   ~/ShadowFall_ESKI_v5_ACMA (karışmasın diye). Güncel oyun bu klasörde.
+   Çalıştır:  cd ~/Documents/projeler/Shadow-Fall && npm run serve
    Aç:        http://localhost:8765/?unlockall
    Ana menünün altında "SHADOW FALL · v1.1.0" yazmalı.
 
-Son yapılanlar (bu oturumun sonu):
-  • Zıplama düzeltildi: yürürken uçurum kenarında durunca oradan
-    zıplayınca boşluğa düşüyordun (yalnız 98 px gidiyordu). Artık yön
-    basılıyken zıplayınca ileri atılıyorsun, havada hız korunuyor.
-  • Çukura / dikene düşmek anında ölüm değil: 1 can gider, son sağlam
-    zemine geri konursun. Son canınsa ölürsün. İnişte can gitmez.
-  • Levye 3. bölümde terk edilmiş arabanın BAGAJINDA; hemen ardından
-    ilk çivili sandık. 1–2. bölümlerde levye gerektiren hiçbir şey yok.
-  • Altyazı / konuşma tamamen kaldırıldı (final konuşmaları, giriş
-    sonundaki başlık kartı, jenerik anlatımı).
-  • İpucu kartları yazısız: yalnız sembol (+ klavyede tuş harfi).
+23 Ekim'de yapılanlar:
+  [x] v1.1.0 git'e işlendi ve GitHub'a gönderildi.
+  [x] Eşya / kapı etiketleri sembole döndü (js/items.js → actIcon):
+      ☝ aç/al · ✊ levyeyle zorla · ⊘ eksik (pil/anahtar/levye gerek)
+      ⤒ merdiven/bin · ↻ çevir · ⇅ kol/şalter/fren · ⊕ tak/değiştir
+      ◉ oku/göster · ⋯ şifre · ✂ sök. Klavyede yanında "E" çıkar.
+      Metin ekran okuyucu için saklanıyor. Semboller renkli emoji
+      değil, tek renk çiziliyor (öğretici / ipucu kartlarında da).
+  [x] Çukura düşünce 1 can gitmesi KALDI (düşmenin bir bedeli olsun).
+  [x] creatureLeap testi sabitlendi (Koca testte hemen hücuma geçiyor).
+      Testler: levels 100/100, play hepsi geçti, smoke hatasız.
+  [x] Eski/yeni kod karışıklığı giderildi: www/ ve android/ kopyası
+      eskiydi (ai.js, creatures2.js, thinking.js yoktu). Yeniden
+      derlendi; artık js/ ile birebir aynı.
+  [x] .aab ve debug APK yeniden derlendi (imza doğrulandı):
+        android/app/build/outputs/bundle/release/app-release.aab
+        android/app/build/outputs/apk/debug/app-debug.apk
+      release/ klasörüne yazılamıyor (macOS koruması); Play Console'a
+      yukarıdaki app-release.aab'yi yükle. release/ içindeki eski
+      ShadowFall-v1.1.0-release.aab ESKİ — onu yükleme.
+  [x] HDD'deki boş ShadowFall klasörü, _yedek_test.txt, touch_end.png
+      silindi.
 
 SIRADA (yapılacaklar):
-  [ ] Oyunu GÜNCEL klasörden aç ve dene (yukarıdaki adım).
-  [ ] Eşya / kapı üstünde çıkan etiketler ("BAGAJI AÇ", "KOLU ÇEK"...)
-      hâlâ yazılı. Bunlar da sembole dönsün mü? Karar ver.
-  [ ] Çukura düşünce 1 can gitmesi uygun mu, yoksa hiç can gitmesin mi?
-      Karar ver (kod: js/main.js → fallBack).
-  [ ] .aab yeniden derlenmedi — son değişiklikler (zıplama, levye,
-      yazısız kartlar, yeni yaratıklar, uzun bölümler) pakette YOK.
-      Derlemek için: npm run android:sync, sonra
-      cd android && ./gradlew bundleRelease
-        -Pandroid.aapt2FromMavenOverride=$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2
-      (JAVA_HOME = Android Studio jbr; ayrıntı docs/PLAY_STORE.md)
-  [ ] Testler: 30 testten 29'u geçiyor. "creatureLeap" testi ara sıra
-      düşüyor (Koca'nın zamanlaması rastgele) — testi sabitlemek gerek,
-      oyunda hata değil.
-  [ ] Değişiklikler GİT'E İŞLENMEDİ (commit yok). Onaylayınca commit +
-      push yapılacak.
-  [ ] Telefonda denemek için debug APK derlenip USB ile kurulabilir.
+  [ ] Oyunu GÜNCEL klasörden aç ve dene; yeni sembollere bak.
+  [ ] Telefonu USB ile bağla (geliştirici seçenekleri → USB hata
+      ayıklama) → debug APK kurulur.
   [ ] Bölüm süresi (hedef ≥10 dk) gerçek oynanışla ölçülmeli; kısa / uzun
       gelirse levelgen.js → targetW ve nPz ayarlanır.
   [ ] Aşağıdaki "YAPILACAKLAR" listesindeki senin yapacakların
@@ -198,14 +195,13 @@ YAPILACAKLAR
   [ ] docs/privacy-policy.html sayfasını www.Yazify.net'e yükle,
       adresi Play Console'a gir.
   [ ] Play Console'da uygulamayı oluştur, Play App Signing'i aç,
-      ShadowFall-v1.1.0-release.aab'yi "Dahili test"e yükle.
+      android/app/build/outputs/bundle/release/app-release.aab'yi
+      "Dahili test"e yükle.
   [ ] İmza anahtarını yedekle: ~/AndroidKeystores/ShadowFall/
       (shadowfall-upload.jks + keystore.properties).
   [ ] Gerçek telefonda oynanış testi (orta seviye Android, mümkünse
       iPhone): FPS, dokunma hissi, yeni hassasiyet ayarı.
   [ ] Oyunu birkaç kişiye oynat (bulmaca ve görev zorluğu).
-  [ ] Kökteki _yedek_test.txt ve touch_end.png'yi Finder'dan sil
-      (macOS koruması yüzünden terminalden silinemedi).
 
   Elle oynanarak ayarlanması gerekenler:
   [ ] Kenar sistemi: tutunma penceresi, kenarda durma mesafesi

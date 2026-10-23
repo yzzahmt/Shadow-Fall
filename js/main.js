@@ -3008,7 +3008,7 @@ const UI = {
     const keys = IS_TOUCH
       ? { move: '☜  ☞', jump: '⇡', crouch: '⇣', act: '☝', pry: '☝ ⋯', push: '☝ ⋯ ⇥', flash: '☝ ✦', run: '⟹' }
       : { move: 'A  D', jump: 'W', crouch: 'S', act: 'E', pry: 'E ⋯', push: 'E ⋯ ⇥', flash: 'F', run: '⇧ Shift' };
-    c.querySelector('.ico').textContent = icons[key] ?? '•';
+    c.querySelector('.ico').textContent = (icons[key] ?? '•') + '\uFE0E';
     c.querySelector('.txt').textContent = keys[key] ?? '';
     c.classList.remove('done');
     c.classList.add('show');
@@ -3072,7 +3072,7 @@ const UI = {
   setActGlow(on, label) {
     const b = this.el('btn-act');
     b.classList.toggle('glow', on);
-    if (on && label) b.querySelector('.act-label').textContent = label;
+    if (on && label) { b.querySelector('.act-label').textContent = actIcon(label); b.setAttribute('aria-label', label); }
   },
 
 
@@ -3092,7 +3092,7 @@ const UI = {
     const c = this.el('hint-card');
     if (!c || !text) return;
     /* YAZISIZ: ipucu kartında yalnız sembol kalır (metin ekran okuyucu için saklanır) */
-    c.querySelector('.ico').textContent = icon;
+    c.querySelector('.ico').textContent = icon + '\uFE0E';
     c.querySelector('.txt').textContent = '';
     c.setAttribute('aria-label', text);
     c.classList.add('show');

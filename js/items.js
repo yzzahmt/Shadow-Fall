@@ -859,7 +859,26 @@ class Generator {
   }
 }
 
-/* ---------------- ETKİLEŞİM İPUCU ---------------- */
+/* ---------------- ETKİLEŞİM İPUCU ----------------
+   YAZISIZ: eylem etiketi ekranda sembole döner (metin ekran okuyucu için kalır).
+   Sıra önemli: "GEREK / YOK" önce, sonra özel eylemler, en son genel "dokun". */
+const ACT_ICONS = [
+  [/GEREK|YOK$/, '⊘'],
+  [/LEVYE/, '✊'],
+  [/SÖK/, '✂'],
+  [/MERDİVEN|BİN$/, '⤒'],
+  [/ÇEVİR/, '↻'],
+  [/KOL|ŞALTER|FREN/, '⇅'],
+  [/TAK$|DEĞİŞTİR/, '⊕'],
+  [/OKU$|GÖSTER/, '◉'],
+  [/ŞİFRE/, '⋯'],
+];
+function actIcon(label) {
+  /* \uFE0E: renkli emoji değil, düz (tek renk) sembol çizilsin */
+  for (const [re, ic] of ACT_ICONS) if (re.test(label)) return ic + '\uFE0E';
+  return '☝\uFE0E';
+}
+
 class InteractHint {
   constructor(scene) {
     this.scene = scene;
@@ -870,7 +889,8 @@ class InteractHint {
     this.target = null;
   }
   show(x, y, label) {
-    this.txt.setText(label).setPosition(x, y);
+    this.label = label;
+    this.txt.setText(actIcon(label) + (IS_TOUCH ? '' : '  E')).setPosition(x, y);
     if (this.txt.alpha < 1) this.scene.tweens.add({ targets: this.txt, alpha: 0.92, duration: 220 });
   }
   hide() {

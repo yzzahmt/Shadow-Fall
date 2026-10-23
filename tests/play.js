@@ -400,6 +400,8 @@ const CASES = {
         sc.creatures.forEach(c => { c.dead = true; });
         const cr = spawnCreature(sc, { type, x: s1.x1 - (type === 'brute' ? 110 : 220), groundY: 600, patrolMinX: s1.x1 - 400, patrolMaxX: s1.x1 - 40, facing: 1, startChase: true, hp: 99 });
         cr.onStrike = () => {};
+        /* Koca kovalarken rastgele anda hücuma geçer; test hücumu hemen başlatır */
+        if (type === 'brute') { cr.state = 'alert'; cr.alertT = 0; }
         sc.creatures.push(cr);
         H.tp(sc, s2.x0 + 260, 569);
         let crossed = false, atEdge = false;
